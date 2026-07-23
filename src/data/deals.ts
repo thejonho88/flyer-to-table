@@ -1,0 +1,508 @@
+import type { Chain, Deal, Store } from '@/domain/types';
+import { getIngredient } from './ingredients';
+import { BASE_PRICES } from './pricing';
+
+/**
+ * Seeded Montreal flyer data. Stores are grouped by FSA (first 3 chars of a
+ * Canadian postal code). Each store carries a list of on-sale ingredients with
+ * a CAD sale price; the regular price + unit are pulled from BASE_PRICES so the
+ * two sources stay consistent. Labels are French-flavoured (circulaire style).
+ *
+ * Any FSA not present here is treated by the discovery agent as "no local
+ * flyers found" — a loud, explicit failure (never silent).
+ */
+
+interface SeededStore extends Store {
+  fsa: string;
+  /** [ingredientId, salePrice] pairs that are on sale this cycle. */
+  sales: [string, number][];
+}
+
+/** Current flyer validity window, computed relative to now so demos never expire. */
+function flyerWindow(): { validFrom: string; validTo: string } {
+  const now = new Date();
+  const from = new Date(now);
+  from.setDate(now.getDate() - 3);
+  const to = new Date(now);
+  to.setDate(now.getDate() + 10);
+  const iso = (d: Date) => d.toISOString().slice(0, 10);
+  return { validFrom: iso(from), validTo: iso(to) };
+}
+
+const SEEDED_STORES: SeededStore[] = [
+  // --- H2X (Quartier des spectacles / lower Plateau) — primary demo area ---
+  {
+    id: 'metro-h2x',
+    fsa: 'H2X',
+    chain: 'metro',
+    name: 'Metro Plateau Mont-Royal',
+    distanceKm: 0.6,
+    dealCount: 0,
+    sales: [
+      ['chicken_thigh', 6.6],
+      ['broccoli', 1.99],
+      ['greek_yogurt', 3.49],
+      ['rice', 4.49],
+      ['canned_tomatoes', 1.29],
+      ['garlic', 0.1],
+      ['bell_pepper', 0.99],
+      ['parmesan', 5.49],
+      ['penne_ww', 1.99],
+    ],
+  },
+  {
+    id: 'iga-h2x',
+    fsa: 'H2X',
+    chain: 'iga',
+    name: 'IGA Saint-Laurent',
+    distanceKm: 1.1,
+    dealCount: 0,
+    sales: [
+      ['salmon', 0.025],
+      ['spinach', 2.49],
+      ['sweet_potato', 1.99],
+      ['eggs', 3.49],
+      ['lemon', 0.5],
+      ['tofu', 2.49],
+      ['feta', 3.49],
+      ['zucchini', 0.69],
+    ],
+  },
+  {
+    id: 'provigo-h2x',
+    fsa: 'H2X',
+    chain: 'provigo',
+    name: 'Provigo Le Marché',
+    distanceKm: 1.4,
+    dealCount: 0,
+    sales: [
+      ['ground_beef', 7.7],
+      ['pasta', 1.29],
+      ['tomato_sauce', 1.99],
+      ['mushroom', 1.99],
+      ['cheddar', 4.99],
+      ['carrot', 0.19],
+      ['onion', 0.39],
+    ],
+  },
+  {
+    id: 'maxi-h2x',
+    fsa: 'H2X',
+    chain: 'maxi',
+    name: 'Maxi Parc',
+    distanceKm: 2.2,
+    dealCount: 0,
+    sales: [
+      ['pork_shoulder', 4.49],
+      ['chickpeas', 0.99],
+      ['black_beans', 0.99],
+      ['lentils', 2.49],
+      ['coconut_milk', 1.79],
+      ['tortilla', 2.49],
+      ['burger_buns', 2.49],
+      ['bbq_sauce', 2.99],
+      ['potato', 1.29],
+    ],
+  },
+  {
+    id: 'superc-h2x',
+    fsa: 'H2X',
+    chain: 'superc',
+    name: 'Super C Mont-Royal',
+    distanceKm: 1.8,
+    dealCount: 0,
+    sales: [
+      ['beef_strips', 11.99],
+      ['chicken_breast', 8.99],
+      ['shrimp', 0.022],
+      ['quinoa', 4.99],
+      ['kale', 1.99],
+      ['avocado', 0.99],
+      ['lime', 0.4],
+      ['green_onion', 0.99],
+      ['arborio_rice', 4.99],
+      ['cream', 2.49],
+    ],
+  },
+
+  // --- H3B (downtown / Ville-Marie) ---
+  {
+    id: 'metro-h3b',
+    fsa: 'H3B',
+    chain: 'metro',
+    name: 'Metro Centre-ville',
+    distanceKm: 0.9,
+    dealCount: 0,
+    sales: [
+      ['chicken_breast', 9.49],
+      ['broccoli', 2.19],
+      ['salmon', 0.027],
+      ['rice', 4.79],
+      ['greek_yogurt', 3.79],
+      ['bell_pepper', 1.09],
+    ],
+  },
+  {
+    id: 'iga-h3b',
+    fsa: 'H3B',
+    chain: 'iga',
+    name: 'IGA Express René-Lévesque',
+    distanceKm: 1.3,
+    dealCount: 0,
+    sales: [
+      ['tofu', 2.79],
+      ['spinach', 2.79],
+      ['lentils', 2.69],
+      ['coconut_milk', 1.89],
+      ['sweet_potato', 2.29],
+      ['feta', 3.79],
+    ],
+  },
+  {
+    id: 'provigo-h3b',
+    fsa: 'H3B',
+    chain: 'provigo',
+    name: 'Provigo Concorde',
+    distanceKm: 1.7,
+    dealCount: 0,
+    sales: [
+      ['ground_beef', 8.2],
+      ['pasta', 1.49],
+      ['tomato_sauce', 2.19],
+      ['mushroom', 2.29],
+      ['pork_shoulder', 5.29],
+      ['tortilla', 2.79],
+    ],
+  },
+  {
+    id: 'superc-h3b',
+    fsa: 'H3B',
+    chain: 'superc',
+    name: 'Super C Sainte-Catherine',
+    distanceKm: 2.0,
+    dealCount: 0,
+    sales: [
+      ['beef_strips', 12.49],
+      ['chickpeas', 1.09],
+      ['black_beans', 1.09],
+      ['quinoa', 5.29],
+      ['avocado', 1.09],
+      ['burger_buns', 2.69],
+      ['bbq_sauce', 3.19],
+    ],
+  },
+
+  // --- H2J (Plateau / Mile End) ---
+  {
+    id: 'metro-h2j',
+    fsa: 'H2J',
+    chain: 'metro',
+    name: 'Metro Mont-Royal Est',
+    distanceKm: 0.7,
+    dealCount: 0,
+    sales: [
+      ['chicken_thigh', 6.9],
+      ['salmon', 0.026],
+      ['broccoli', 2.09],
+      ['penne_ww', 2.09],
+      ['parmesan', 5.79],
+      ['eggs', 3.79],
+    ],
+  },
+  {
+    id: 'iga-h2j',
+    fsa: 'H2J',
+    chain: 'iga',
+    name: 'IGA Duluth',
+    distanceKm: 1.0,
+    dealCount: 0,
+    sales: [
+      ['tofu', 2.59],
+      ['spinach', 2.59],
+      ['feta', 3.59],
+      ['zucchini', 0.79],
+      ['lemon', 0.55],
+      ['sweet_potato', 2.09],
+    ],
+  },
+  {
+    id: 'maxi-h2j',
+    fsa: 'H2J',
+    chain: 'maxi',
+    name: 'Maxi Papineau',
+    distanceKm: 1.9,
+    dealCount: 0,
+    sales: [
+      ['pork_shoulder', 4.69],
+      ['chickpeas', 1.05],
+      ['lentils', 2.59],
+      ['coconut_milk', 1.85],
+      ['tortilla', 2.59],
+      ['potato', 1.39],
+      ['bbq_sauce', 3.09],
+    ],
+  },
+  {
+    id: 'provigo-h2j',
+    fsa: 'H2J',
+    chain: 'provigo',
+    name: 'Provigo Mile End',
+    distanceKm: 1.5,
+    dealCount: 0,
+    sales: [
+      ['ground_beef', 7.9],
+      ['pasta', 1.39],
+      ['tomato_sauce', 2.09],
+      ['mushroom', 2.09],
+      ['cheddar', 5.19],
+      ['bell_pepper', 1.05],
+    ],
+  },
+
+  // --- H4C (Saint-Henri / Sud-Ouest) ---
+  {
+    id: 'superc-h4c',
+    fsa: 'H4C',
+    chain: 'superc',
+    name: 'Super C Saint-Jacques',
+    distanceKm: 0.8,
+    dealCount: 0,
+    sales: [
+      ['beef_strips', 11.79],
+      ['chicken_breast', 8.79],
+      ['quinoa', 4.89],
+      ['kale', 1.89],
+      ['avocado', 0.95],
+      ['shrimp', 0.023],
+      ['arborio_rice', 4.89],
+    ],
+  },
+  {
+    id: 'maxi-h4c',
+    fsa: 'H4C',
+    chain: 'maxi',
+    name: 'Maxi Notre-Dame',
+    distanceKm: 1.2,
+    dealCount: 0,
+    sales: [
+      ['pork_shoulder', 4.39],
+      ['ground_pork', 6.2],
+      ['chickpeas', 0.95],
+      ['black_beans', 0.95],
+      ['lentils', 2.39],
+      ['coconut_milk', 1.75],
+      ['burger_buns', 2.39],
+    ],
+  },
+  {
+    id: 'iga-h4c',
+    fsa: 'H4C',
+    chain: 'iga',
+    name: 'IGA Extra Saint-Henri',
+    distanceKm: 1.6,
+    dealCount: 0,
+    sales: [
+      ['salmon', 0.026],
+      ['tofu', 2.69],
+      ['spinach', 2.69],
+      ['feta', 3.69],
+      ['greek_yogurt', 3.69],
+      ['eggs', 3.69],
+    ],
+  },
+
+  // --- H1Y (Rosemont) ---
+  {
+    id: 'metro-h1y',
+    fsa: 'H1Y',
+    chain: 'metro',
+    name: 'Metro Rosemont',
+    distanceKm: 0.9,
+    dealCount: 0,
+    sales: [
+      ['chicken_thigh', 6.8],
+      ['broccoli', 2.09],
+      ['rice', 4.69],
+      ['canned_tomatoes', 1.39],
+      ['parmesan', 5.69],
+      ['penne_ww', 2.09],
+    ],
+  },
+  {
+    id: 'provigo-h1y',
+    fsa: 'H1Y',
+    chain: 'provigo',
+    name: 'Provigo Beaubien',
+    distanceKm: 1.4,
+    dealCount: 0,
+    sales: [
+      ['ground_beef', 8.1],
+      ['pasta', 1.45],
+      ['tomato_sauce', 2.15],
+      ['mushroom', 2.19],
+      ['cheddar', 5.09],
+      ['carrot', 0.22],
+    ],
+  },
+  {
+    id: 'superc-h1y',
+    fsa: 'H1Y',
+    chain: 'superc',
+    name: 'Super C Bélanger',
+    distanceKm: 2.1,
+    dealCount: 0,
+    sales: [
+      ['beef_strips', 12.29],
+      ['chicken_breast', 9.19],
+      ['quinoa', 5.09],
+      ['avocado', 1.05],
+      ['lime', 0.45],
+      ['green_onion', 1.09],
+    ],
+  },
+  {
+    id: 'maxi-h1y',
+    fsa: 'H1Y',
+    chain: 'maxi',
+    name: 'Maxi Rosemont',
+    distanceKm: 2.4,
+    dealCount: 0,
+    sales: [
+      ['pork_shoulder', 4.59],
+      ['chickpeas', 1.0],
+      ['lentils', 2.49],
+      ['coconut_milk', 1.8],
+      ['tortilla', 2.55],
+      ['burger_buns', 2.55],
+      ['bbq_sauce', 3.05],
+    ],
+  },
+];
+
+function buildDealsForStore(store: SeededStore): Deal[] {
+  const { validFrom, validTo } = flyerWindow();
+  const deals: Deal[] = [];
+  for (const [ingredientId, salePrice] of store.sales) {
+    const base = BASE_PRICES[ingredientId];
+    const ing = getIngredient(ingredientId);
+    if (!base || !ing) continue; // guard against typos in the seed
+    deals.push({
+      id: `${store.id}__${ingredientId}`,
+      storeId: store.id,
+      ingredientId,
+      label: ing.name,
+      labelFr: ing.nameFr,
+      salePrice,
+      regularPrice: base.unitPrice,
+      unit: base.unit,
+      validFrom,
+      validTo,
+    });
+  }
+  return deals;
+}
+
+interface AreaData {
+  stores: Store[];
+  deals: Deal[];
+}
+
+const AREA_CACHE: Record<string, AreaData> = {};
+
+function buildArea(fsa: string): AreaData | null {
+  const seeded = SEEDED_STORES.filter((s) => s.fsa === fsa);
+  if (seeded.length === 0) return null;
+  const deals: Deal[] = [];
+  const stores: Store[] = seeded.map((s) => {
+    const storeDeals = buildDealsForStore(s);
+    deals.push(...storeDeals);
+    return {
+      id: s.id,
+      chain: s.chain,
+      name: s.name,
+      distanceKm: s.distanceKm,
+      dealCount: storeDeals.length,
+    };
+  });
+  return { stores, deals };
+}
+
+/** Canonical seeded FSAs, in a fixed (sorted) order for deterministic mapping. */
+const SEEDED_FSA_LIST: string[] = Array.from(
+  new Set(SEEDED_STORES.map((s) => s.fsa)),
+).sort();
+const SEEDED_FSA_SET = new Set(SEEDED_FSA_LIST);
+
+/**
+ * A Montreal-region FSA: leading "H", a digit, then a letter from the Canadian
+ * postal alphabet (mirrors the letter class in domain/postal.ts). fsaOf() does
+ * NOT validate shape, so the resolver validates here.
+ */
+const H_FSA_RE = /^H\d[ABCEGHJ-NPRSTV-Z]$/;
+
+/** Deterministic non-negative char-code sum for a string. */
+function charCodeSum(s: string): number {
+  let sum = 0;
+  for (let i = 0; i < s.length; i++) sum += s.charCodeAt(i);
+  return sum;
+}
+
+/**
+ * Resolve any requested FSA to a seeded canonical FSA:
+ *  - seeded H-FSAs (H2X, H3B, H2J, H4C, H1Y) map to themselves (identity),
+ *  - other valid H-FSAs map deterministically to one of the seeded areas via a
+ *    simple char-code hash mod 5,
+ *  - invalid or non-H FSAs return null (→ loud no_flyers_found upstream).
+ */
+function resolveToSeededFsa(fsa: string): string | null {
+  const key = fsa.toUpperCase();
+  if (!H_FSA_RE.test(key)) return null;
+  if (SEEDED_FSA_SET.has(key)) return key;
+  const idx = charCodeSum(key) % SEEDED_FSA_LIST.length;
+  return SEEDED_FSA_LIST[idx];
+}
+
+/** Canonical (shared, cached) area for a known seeded FSA. Never mutated. */
+function getCanonicalArea(fsa: string): AreaData | null {
+  if (!(fsa in AREA_CACHE)) {
+    const built = buildArea(fsa);
+    if (built) AREA_CACHE[fsa] = built;
+    else return null;
+  }
+  return AREA_CACHE[fsa] ?? null;
+}
+
+/**
+ * Deterministic per-FSA distance jitter. Two different FSAs that resolve to the
+ * same canonical area still show distinct, plausible store distances. Pure
+ * function of (requested FSA, store id): same inputs → same output. Offsets are
+ * bounded to ±1.5 km with a 0.2 km floor and one-decimal precision.
+ */
+function jitterDistance(baseKm: number, fsa: string, storeId: string): number {
+  const offset = ((charCodeSum(fsa + storeId) % 31) - 15) / 10; // [-1.5, +1.5]
+  const km = Math.max(0.2, baseKm + offset);
+  return Math.round(km * 10) / 10;
+}
+
+/**
+ * Requested FSA (e.g. "H4A") -> stores + deals for its seeded/mapped area, or
+ * null if the FSA is invalid or non-Montreal. Returns freshly cloned store
+ * objects carrying per-FSA jittered distances, so the shared cached canonical
+ * area is never mutated. Deal counts are unchanged.
+ */
+export function getSeededArea(fsa: string): AreaData | null {
+  const requested = fsa.toUpperCase();
+  const canonical = resolveToSeededFsa(requested);
+  if (!canonical) return null;
+  const area = getCanonicalArea(canonical);
+  if (!area) return null;
+  const stores: Store[] = area.stores.map((s) => ({
+    ...s,
+    distanceKm: jitterDistance(s.distanceKm, requested, s.id),
+  }));
+  return { stores, deals: area.deals };
+}
+
+export const CHAIN_OF: Record<string, Chain> = Object.fromEntries(
+  SEEDED_STORES.map((s) => [s.id, s.chain]),
+);
