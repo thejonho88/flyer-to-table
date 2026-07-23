@@ -25,7 +25,7 @@ import { usePreferencesStore } from '@/state/preferencesStore';
 import {
   flyerExtractor,
   FlyerExtractionError,
-} from '@/services/MockFlyerExtractor';
+} from '@/services/flyerExtractor';
 import { revokeUploadedFile } from '@/services/filePick';
 import { CHAIN_FLYER_URLS } from '@/data/flyerUrls';
 import { openExternalUrl } from '@/services/links';

@@ -3,10 +3,14 @@ import type {
   FlyerExtractInput,
   FlyerExtractOptions,
   FlyerExtractionEvent,
-  FlyerExtractionFailure,
   FlyerExtractor,
 } from '@/domain/types';
 import { makeExtractedDeals } from '@/data/deals';
+import { FlyerExtractionError } from './flyerExtractionError';
+
+// Re-exported for backward compatibility: FlyerExtractionError now lives in its
+// own module (see ./flyerExtractionError) to avoid circular imports.
+export { FlyerExtractionError };
 
 const VALID_MIME_TYPES = new Set([
   'application/pdf',
@@ -71,15 +75,3 @@ export class MockFlyerExtractor implements FlyerExtractor {
     return deals;
   }
 }
-
-export class FlyerExtractionError extends Error {
-  constructor(
-    public reason: FlyerExtractionFailure,
-    public fileName: string,
-  ) {
-    super(`Flyer extraction failed (${reason}) for ${fileName}`);
-    this.name = 'FlyerExtractionError';
-  }
-}
-
-export const flyerExtractor: FlyerExtractor = new MockFlyerExtractor();

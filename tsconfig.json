@@ -3,6 +3,10 @@
   "compilerOptions": {
     "strict": true,
     "types": ["jest"],
+    // The edge-function modules use Deno-style explicit `.ts` import specifiers.
+    // Tests import the pure ones (validate/catalog), pulling them into the app
+    // program, so permit `.ts` extensions here (safe under --noEmit).
+    "allowImportingTsExtensions": true,
     "paths": {
       "@/*": ["./src/*"]
     }
@@ -13,5 +17,5 @@
     ".expo/types/**/*.ts",
     "expo-env.d.ts"
   ],
-  "exclude": ["node_modules"]
+  "exclude": ["node_modules", "supabase/functions"]
 }

@@ -4,8 +4,9 @@
     {
       "name": "flyer-to-table-web",
       "runtimeExecutable": "npx",
-      "runtimeArgs": ["expo", "start", "--web", "--port", "8081"],
-      "port": 8081
+      "runtimeArgs": ["expo", "start", "--web", "--port", "8090"],
+      "port": 8090,
+      "autoPort": false
     }
   ]
 }

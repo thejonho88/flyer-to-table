@@ -2,6 +2,15 @@
 
 Newest entries first. One entry per completed task/change set.
 
+## 2026-07-23 — Real Claude-backed flyer extractor (Phase 0.5, first half)
+- MockFlyerExtractor swapped for the real thing: new `extract-flyer` Supabase edge function (deployed, v3) runs claude-opus-4-8 with structured outputs over the uploaded PDF/PNG/JPEG — French-fluent prompt embeds the 70-ingredient catalog, ingredientId constrained to catalog ids via schema enum.
+- Model output is never trusted raw: server-side validator (Jest-tested, shared pure module) drops unknown ids, clamps sale ≤ regular, falls back regular=sale (no invented savings), converts Quebec per-100g fish pricing to the app's per-gram convention (÷100, deterministic — found live when salmon came back 100× high), rounds to 4 decimals, defaults dates to the Mon–Sun week, dedupes per ingredient keeping cheapest, stamps id/storeId/provenance:'extracted'. Empty after filtering → loud `no_deals_found`.
+- Client `RemoteFlyerExtractor` behind the existing FlyerExtractor seam: blob→base64, POST with anon key, synthetic progress ramp, 180s timeout, 10MB fail-fast, error-reason mapping. Env-driven factory (`EXPO_PUBLIC_SUPABASE_URL/_ANON_KEY`) picks remote; Jest and no-env builds keep the mock. Browser-only bug found in live verification: unbound `fetch` throws "Illegal invocation" — fixed with `fetch.bind(globalThis)` (mock-based tests can't catch this class of bug).
+- Accumulating French label→ingredient dictionary is live: new `label_mappings` table (RLS on, service-role only), fire-and-forget upsert after each successful extraction — 9 mappings recorded from the first real run.
+- Verified end-to-end: curl with a generated French Super C flyer (9/9 food deals, detergent skipped, flyer dates parsed, ~10–19s) AND full in-browser flow (drop → visible progress → confirm/edit panel → apply → overlay persisted, seeded Super C deals replaced with provenance 'extracted').
+- Tests: 67 → 96. Pipeline: scoper → code-builder → reviewer (pass; reviewer's one minor finding — client-side size pre-check — applied).
+- Deployed site now uses the real extractor (deploy.yml exports the public Supabase config at export time).
+
 ## 2026-07-23 — Supabase provisioned (setup)
 - Project "Flyer 2 Table" created (ref dnkzhrladfjuyvwnhxrb); ANTHROPIC_API_KEY set as an Edge Function secret (dashboard-verified); Supabase MCP added to project config and OAuth-authenticated; official Supabase agent skills installed.
 - Everything is staged for Phase 0.5 (real Claude-backed FlyerExtractor) — build starts in the next session, where the MCP tools load.
@@ -57,7 +66,7 @@ Newest entries first. One entry per completed task/change set.
 
 ## Backlog / not done
 - **Phase 0 flyer-discovery spike: DONE (2026-07-23)** — decision is Flipp-first hybrid; see the dated entry above and `Reference Files/phase0-flyer-discovery-findings.md`.
-- **Phase 0.5 — real DiscoveryAgent: NOT started** — wire Flipp/Apify fetch + Claude extraction behind the existing DiscoveryAgent interface; Supabase Postgres for shared deal cache + accumulating French label→ingredient dictionary. This is what puts real Montreal prices in front of the pilot user. All flyer data is still mocked until this ships.
+- **Phase 0.5 — real DiscoveryAgent: HALF done (2026-07-23)** — the Claude extraction half is live (see the "Real Claude-backed flyer extractor" entry): uploads now produce real deals, and the label→ingredient dictionary is accumulating in Postgres. Remaining half: wire Flipp/Apify fetch behind the DiscoveryAgent interface + shared deal cache, so real Montreal prices arrive WITHOUT the user uploading anything. Store discovery itself is still mocked.
 - Get a legal read on the chains' "personal, non-commercial use" terms before production scale-up.
 - Business model decision (needed before Phase 2 monetization work).
 - Recipe database: build vs license decision.

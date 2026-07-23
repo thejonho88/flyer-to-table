@@ -35,6 +35,10 @@ jobs:
       - run: npx expo export --platform web
         env:
           EXPO_BASE_URL: /flyer-to-table
+          # Public Supabase config — wires the deployed site to the real
+          # RemoteFlyerExtractor. The anon key is a public key (safe to expose).
+          EXPO_PUBLIC_SUPABASE_URL: https://dnkzhrladfjuyvwnhxrb.supabase.co
+          EXPO_PUBLIC_SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRua3pocmxhZGZqdXl2d25oeHJiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ4MzYzNjQsImV4cCI6MjEwMDQxMjM2NH0.KrDkdwa2Heo4v8-G4mewJOlaaCm1-2IyLfPal3Y4DCk
 
       # Single-page app: serve index.html for any deep link (e.g. /home)
       - run: cp dist/index.html dist/404.html
