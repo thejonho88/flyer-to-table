@@ -4,7 +4,14 @@
  * planner, state, and UI. Keep them free of any runtime/platform dependency.
  */
 
-export type Chain = 'metro' | 'iga' | 'provigo' | 'maxi' | 'superc';
+export type Chain =
+  | 'metro'
+  | 'iga'
+  | 'provigo'
+  | 'maxi'
+  | 'superc'
+  | 'loblaws'
+  | 'walmart';
 
 export type DietaryTag =
   | 'vegetarian'
@@ -244,4 +251,6 @@ export const CHAIN_LABELS: Record<Chain, string> = {
   provigo: 'Provigo',
   maxi: 'Maxi',
   superc: 'Super C',
+  loblaws: 'Loblaws',
+  walmart: 'Walmart',
 };

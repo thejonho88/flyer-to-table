@@ -1,12 +1,21 @@
 import { create } from 'zustand';
 import type {
+  Chain,
   DiscoveryEvent,
   DiscoveryPhase,
   DiscoveryResult,
   Store,
 } from '@/domain/types';
+import { fsaOf } from '@/domain/postal';
+import {
+  addedStoreIdFor,
+  makeAddedStore,
+  mergeAddedStores,
+} from '@/data/deals';
 import { discoveryAgent } from '@/services/MockDiscoveryAgent';
 import { DiscoveryError } from '@/services/MockDiscoveryAgent';
+import { persistence } from '@/services/LocalPersistenceAdapter';
+import { usePreferencesStore } from './preferencesStore';
 
 type DiscoveryStatus = 'idle' | 'running' | 'success' | 'failed';
 
@@ -26,10 +35,12 @@ interface DiscoveryState {
     postalCode: string,
     opts?: { forceRefresh?: boolean },
   ) => Promise<DiscoveryResult | null>;
+  /** Append a user-added store (and its deals) to the current result. */
+  addStore: (chain: Chain) => Promise<void>;
   reset: () => void;
 }
 
-export const useDiscoveryStore = create<DiscoveryState>((set) => ({
+export const useDiscoveryStore = create<DiscoveryState>((set, get) => ({
   status: 'idle',
   progress: 0,
   foundStores: [],
@@ -66,14 +77,24 @@ export const useDiscoveryStore = create<DiscoveryState>((set) => ({
         case 'store_found':
           set((s) => ({ foundStores: [...s.foundStores, e.store] }));
           break;
-        case 'complete':
+        case 'complete': {
+          // A forced live re-discovery rebuilds the result from seeds and would
+          // silently drop user-added stores. Re-merge any added store still in
+          // the persisted selection so it is never dropped without notice.
+          const selectedIds =
+            usePreferencesStore.getState().preferences?.selectedStoreIds ?? [];
+          const merged = mergeAddedStores(e.result, selectedIds);
           set({
             status: 'success',
-            result: e.result,
-            foundStores: e.result.stores,
+            result: merged,
+            foundStores: merged.stores,
             progress: 1,
           });
+          if (merged !== e.result) {
+            void persistence.saveDiscoveryCache(merged);
+          }
           break;
+        }
         case 'failed':
           set({
             status: 'failed',
@@ -104,6 +125,24 @@ export const useDiscoveryStore = create<DiscoveryState>((set) => ({
       });
       return null;
     }
+  },
+
+  addStore: async (chain) => {
+    const result = get().result;
+    if (!result) return;
+    const fsa = fsaOf(result.postalCode);
+    const id = addedStoreIdFor(chain, fsa);
+    // Idempotent: never double-add the same deterministic store.
+    if (result.stores.some((s) => s.id === id)) return;
+
+    const { store, deals } = makeAddedStore(chain, fsa);
+    const updated: DiscoveryResult = {
+      ...result,
+      stores: [...result.stores, store],
+      deals: [...result.deals, ...deals],
+    };
+    set({ result: updated, foundStores: updated.stores });
+    await persistence.saveDiscoveryCache(updated);
   },
 
   reset: () =>

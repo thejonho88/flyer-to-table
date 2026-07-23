@@ -1,4 +1,5 @@
-import type { Chain, Deal, Store } from '@/domain/types';
+import type { Chain, Deal, DiscoveryResult, Store } from '@/domain/types';
+import { CHAIN_LABELS } from '@/domain/types';
 import { getIngredient } from './ingredients';
 import { BASE_PRICES } from './pricing';
 
@@ -379,16 +380,16 @@ const SEEDED_STORES: SeededStore[] = [
   },
 ];
 
-function buildDealsForStore(store: SeededStore): Deal[] {
+function buildDealsForStore(storeId: string, sales: [string, number][]): Deal[] {
   const { validFrom, validTo } = flyerWindow();
   const deals: Deal[] = [];
-  for (const [ingredientId, salePrice] of store.sales) {
+  for (const [ingredientId, salePrice] of sales) {
     const base = BASE_PRICES[ingredientId];
     const ing = getIngredient(ingredientId);
     if (!base || !ing) continue; // guard against typos in the seed
     deals.push({
-      id: `${store.id}__${ingredientId}`,
-      storeId: store.id,
+      id: `${storeId}__${ingredientId}`,
+      storeId,
       ingredientId,
       label: ing.name,
       labelFr: ing.nameFr,
@@ -414,7 +415,7 @@ function buildArea(fsa: string): AreaData | null {
   if (seeded.length === 0) return null;
   const deals: Deal[] = [];
   const stores: Store[] = seeded.map((s) => {
-    const storeDeals = buildDealsForStore(s);
+    const storeDeals = buildDealsForStore(s.id, s.sales);
     deals.push(...storeDeals);
     return {
       id: s.id,
@@ -506,3 +507,174 @@ export function getSeededArea(fsa: string): AreaData | null {
 export const CHAIN_OF: Record<string, Chain> = Object.fromEntries(
   SEEDED_STORES.map((s) => [s.id, s.chain]),
 );
+
+/* ------------------------------------------------------------------ */
+/* User-added stores                                                  */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Every chain a user can add to their plan, in a fixed order for a stable
+ * "add more stores" list. The two newest chains (loblaws, walmart) are never
+ * seeded into the demo areas above, so they are always addable.
+ */
+export const CHAIN_CATALOG: Chain[] = [
+  'metro',
+  'iga',
+  'provigo',
+  'maxi',
+  'superc',
+  'loblaws',
+  'walmart',
+];
+
+/**
+ * Per-chain sale seeds for user-added stores. Ingredient ids key into
+ * BASE_PRICES (validated by buildDealsForStore) and every sale price sits a
+ * realistic 15–40% below its regular price — never a fake deep discount that
+ * would wrongly dominate the sale-weighted planner.
+ */
+export const CHAIN_DEAL_SEEDS: Record<Chain, [string, number][]> = {
+  metro: [
+    ['chicken_thigh', 6.99],
+    ['broccoli', 1.99],
+    ['greek_yogurt', 3.29],
+    ['rice', 3.99],
+    ['parmesan', 5.49],
+  ],
+  iga: [
+    ['salmon', 0.025],
+    ['spinach', 2.59],
+    ['tofu', 2.59],
+    ['feta', 3.49],
+    ['eggs', 3.79],
+  ],
+  provigo: [
+    ['ground_beef', 7.99],
+    ['pasta', 1.79],
+    ['tomato_sauce', 2.29],
+    ['mushroom', 2.19],
+    ['cheddar', 4.99],
+  ],
+  maxi: [
+    ['pork_shoulder', 6.49],
+    ['chickpeas', 0.99],
+    ['lentils', 2.49],
+    ['coconut_milk', 1.79],
+    ['tortilla', 2.49],
+  ],
+  superc: [
+    ['chicken_breast', 8.99],
+    ['quinoa', 4.99],
+    ['avocado', 0.99],
+    ['shrimp', 0.022],
+    ['kale', 1.99],
+  ],
+  loblaws: [
+    ['chicken_breast', 9.49],
+    ['broccoli', 1.89],
+    ['greek_yogurt', 3.39],
+    ['pasta', 1.79],
+    ['cheddar', 4.99],
+    ['salmon', 0.025],
+    ['spinach', 2.59],
+  ],
+  walmart: [
+    ['ground_beef', 7.99],
+    ['chicken_thigh', 6.99],
+    ['eggs', 3.79],
+    ['rice', 3.99],
+    ['tortilla', 2.49],
+    ['chickpeas', 0.99],
+    ['bell_pepper', 0.89],
+    ['shrimp', 0.023],
+  ],
+};
+
+const ADDED_STORE_SUFFIX = '-added';
+
+/** Plausible Montreal-flavoured names for an added store, keyed by chain. */
+const ADDED_NAME_QUARTIER: Record<Chain, string> = {
+  metro: 'Marché',
+  iga: 'Quartier',
+  provigo: 'Le Marché',
+  maxi: 'Grand',
+  superc: 'Entrepôt',
+  loblaws: 'Le Grand',
+  walmart: 'Supercentre',
+};
+
+/**
+ * Deterministic id for a user-added store of `chain` in `fsa`. Lower-cased to
+ * match the seeded-store id style (e.g. "loblaws-h2x-added"). Pure function of
+ * its inputs so it can be reconstructed on rehydration / re-discovery.
+ */
+export function addedStoreIdFor(chain: Chain, fsa: string): string {
+  return `${chain}-${fsa.toLowerCase()}${ADDED_STORE_SUFFIX}`;
+}
+
+export interface AddedStoreBundle {
+  store: Store;
+  deals: Deal[];
+}
+
+/**
+ * Build a fully-formed user-added store (+ its deals) for a chain in an FSA.
+ * Deterministic: same (chain, fsa) always yields the same id, name, distance,
+ * and deals — so it survives persistence and can be rebuilt from just its id.
+ */
+export function makeAddedStore(chain: Chain, fsa: string): AddedStoreBundle {
+  const fsaUpper = fsa.toUpperCase();
+  const id = addedStoreIdFor(chain, fsa);
+  const sales = CHAIN_DEAL_SEEDS[chain] ?? [];
+  const deals = buildDealsForStore(id, sales);
+  const store: Store = {
+    id,
+    chain,
+    name: `${CHAIN_LABELS[chain]} ${ADDED_NAME_QUARTIER[chain]} ${fsaUpper}`,
+    distanceKm: jitterDistance(2.5, fsaUpper, id),
+    dealCount: deals.length,
+  };
+  return { store, deals };
+}
+
+/**
+ * Parse a deterministic added-store id ("`chain`-`fsa`-added") back into a
+ * rebuilt store + deals, or null if it is not a valid added-store id (unknown
+ * chain, malformed shape). Chain names never contain a dash, so the leading
+ * segment is the chain and the middle segment is the fsa.
+ */
+export function rebuildAddedStoreFromId(id: string): AddedStoreBundle | null {
+  if (!id.endsWith(ADDED_STORE_SUFFIX)) return null;
+  const core = id.slice(0, -ADDED_STORE_SUFFIX.length);
+  const parts = core.split('-');
+  if (parts.length !== 2) return null;
+  const [chain, fsa] = parts;
+  if (!CHAIN_CATALOG.includes(chain as Chain) || !fsa) return null;
+  return makeAddedStore(chain as Chain, fsa);
+}
+
+/**
+ * Re-merge any user-added store whose deterministic id is still selected but
+ * missing from `result` (e.g. after a forced live re-discovery rebuilt the
+ * result from seeds). Pure: returns a new result, never mutates the input, and
+ * never silently drops a store the user explicitly kept.
+ */
+export function mergeAddedStores(
+  result: DiscoveryResult,
+  selectedStoreIds: string[],
+): DiscoveryResult {
+  const present = new Set(result.stores.map((s) => s.id));
+  const stores = [...result.stores];
+  const deals = [...result.deals];
+  let changed = false;
+  for (const id of selectedStoreIds) {
+    if (present.has(id)) continue;
+    const rebuilt = rebuildAddedStoreFromId(id);
+    if (!rebuilt) continue;
+    stores.push(rebuilt.store);
+    deals.push(...rebuilt.deals);
+    present.add(id);
+    changed = true;
+  }
+  return changed ? { ...result, stores, deals } : result;
+}

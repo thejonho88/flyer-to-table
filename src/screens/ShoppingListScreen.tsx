@@ -10,7 +10,9 @@ import { usePlanStore } from '@/state/planStore';
 import { useChecklistStore } from '@/state/checklistStore';
 import { itemKey, shoppingListStats } from '@/domain/shoppingList';
 import { formatWeekOf } from '@/domain/dates';
+import { formatUnitPrice } from '@/domain/format';
 import { shareText, shoppingListToText } from '@/services/share';
+import { StoreSpecialsModal } from '@/components/StoreSpecialsModal';
 
 function formatQty(quantity: number, unit: string): string {
   const q = Number.isInteger(quantity) ? String(quantity) : quantity.toFixed(2);
@@ -27,6 +29,7 @@ export function ShoppingListScreen() {
   const list = useMemo(() => buildList(), [buildList, plan]);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [shareMsg, setShareMsg] = useState<string | null>(null);
+  const [specialsStore, setSpecialsStore] = useState<{ id: string; name: string } | null>(null);
 
   if (!plan || !list) {
     return (
@@ -87,7 +90,16 @@ export function ShoppingListScreen() {
               onPress={() => setCollapsed((c) => ({ ...c, [group.store.id]: !c[group.store.id] }))}
             >
               <Icon name={isCollapsed ? 'chevron-forward' : 'chevron-down'} size={18} color={colors.text} />
-              <Text style={styles.storeName}>{group.store.name}</Text>
+              <Pressable
+                onPress={(e) => {
+                  // Nested press: open specials without toggling the collapse header.
+                  e.stopPropagation();
+                  setSpecialsStore({ id: group.store.id, name: group.store.name });
+                }}
+                hitSlop={6}
+              >
+                <Text style={[styles.storeName, styles.storeNameLink]}>{group.store.name}</Text>
+              </Pressable>
               <Text style={styles.storeChain}>{CHAIN_LABELS[group.store.chain]}</Text>
               <Text style={styles.storeItems}>{group.items.length} items</Text>
               <Text style={styles.storeSubtotal}>${group.subtotal.toFixed(2)}</Text>
@@ -124,6 +136,13 @@ export function ShoppingListScreen() {
           <Button label={shareMsg ?? 'Share List'} icon="share-outline" onPress={onShare} />
         </View>
       </Card>
+
+      <StoreSpecialsModal
+        visible={!!specialsStore}
+        storeId={specialsStore?.id ?? ''}
+        storeName={specialsStore?.name ?? ''}
+        onClose={() => setSpecialsStore(null)}
+      />
     </ScrollView>
   );
 }
@@ -145,7 +164,9 @@ function ItemRow({
       <Text style={[styles.itemLabel, checked && styles.itemLabelChecked]}>{item.label}</Text>
       <View style={styles.itemRight}>
         {item.onSale ? <Badge label="SALE" tone="success" /> : null}
-        <Text style={styles.itemQty}>{formatQty(item.quantity, item.unit)}</Text>
+        <Text style={styles.itemQty}>
+          {`${formatQty(item.quantity, item.unit)} × ${formatUnitPrice(item.unitPrice, item.unit)}`}
+        </Text>
         <Text style={styles.itemPrice}>${item.lineTotal.toFixed(2)}</Text>
       </View>
     </View>
@@ -165,6 +186,7 @@ const styles = StyleSheet.create({
   storeCard: { overflow: 'hidden' },
   storeHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, padding: spacing.lg },
   storeName: { fontSize: fontSizes.lg, fontWeight: fontWeights.bold, color: colors.text },
+  storeNameLink: { color: colors.brand, textDecorationLine: 'underline' },
   storeChain: { fontSize: fontSizes.xs, color: colors.textMuted, backgroundColor: colors.surfaceMuted, paddingHorizontal: spacing.sm, paddingVertical: 2, borderRadius: radii.sm },
   storeItems: { fontSize: fontSizes.sm, color: colors.textMuted, marginLeft: 'auto' },
   storeSubtotal: { fontSize: fontSizes.md, fontWeight: fontWeights.bold, color: colors.success },

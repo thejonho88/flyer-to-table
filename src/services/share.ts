@@ -2,6 +2,7 @@ import { Platform } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import type { ShoppingList } from '@/domain/types';
 import { CHAIN_LABELS } from '@/domain/types';
+import { formatUnitPrice } from '@/domain/format';
 
 function formatQty(quantity: number, unit: string): string {
   const q = Number.isInteger(quantity) ? String(quantity) : quantity.toFixed(2);
@@ -18,7 +19,7 @@ export function shoppingListToText(list: ShoppingList): string {
     for (const item of group.items) {
       const sale = item.onSale ? ' [SALE]' : '';
       lines.push(
-        `  - ${item.label} · ${formatQty(item.quantity, item.unit)} · $${item.lineTotal.toFixed(2)}${sale}`,
+        `  - ${item.label} · ${formatQty(item.quantity, item.unit)} × ${formatUnitPrice(item.unitPrice, item.unit)} · $${item.lineTotal.toFixed(2)}${sale}`,
       );
     }
     lines.push('');
