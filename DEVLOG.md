@@ -2,6 +2,14 @@
 
 Newest entries first. One entry per completed task/change set.
 
+## 2026-07-23 — Phase 0 flyer-discovery spike (Montreal) — COMPLETE
+- Ran the Montreal data-sourcing spike (research, not code): 6 parallel research agents — one per chain plus aggregators/legal.
+- **Exit criteria MET**: all 5 target chains have structured/semi-structured weekly data (well past the 3-of-5 bar). Scores: IGA 4/5, Metro/Super C/Provigo/Maxi 3/5, Walmart 2/5.
+- Key findings: data is more structured than feared (JSON APIs / HTML price attributes, not just images); French fully solved (all bilingual + Claude fluent); uniform Thu–Wed cadence. Real obstacles are bot protection (Akamai/Cloudflare/PerimeterX) and uniform "personal, non-commercial use" ToS (gray zone under Canadian browsewrap case law — needs a legal read before production).
+- **Decision: Flipp-first hybrid.** Pilot sources real data via a managed Flipp aggregator scraper (Apify, ~$5/1k results, covers all 6 chains, one schema); Claude extraction stays for PDF fallback + French label→ingredient mapping (accumulating dictionary in Postgres); send Flipp NativeX partnership inquiry; keep per-retailer scraping as documented fallback.
+- Full writeup: `Reference Files/phase0-flyer-discovery-findings.md` (kept private, not in public repo).
+- Resolves the "Flyer data sourcing approach" open question. Unblocks Phase 0.5 (real DiscoveryAgent + Supabase).
+
 ## 2026-07-23 — Unit model (kg/lb), CAD currency, flyer corroboration links
 - Proper mass-unit domain model (`g`/`kg`/`lb`, 1 lb = 453.592 g): meats now seeded and displayed per-lb like real Quebec flyers ($8.99/lb · $19.82/kg dual display), fish keep per-100 g convention.
 - Fixed a latent bug: cost math multiplied quantity × unit price with no unit check; deal comparison now normalizes per-gram so mixed-unit deals compare like-for-like.
@@ -36,7 +44,9 @@ Newest entries first. One entry per completed task/change set.
 - 18 unit tests; pipeline: scoper → code-builder → reviewer (passed).
 
 ## Backlog / not done
-- **Phase 0 flyer-discovery spike (Montreal): NOT started** — the highest-risk open question. All flyer data is still mocked.
+- **Phase 0 flyer-discovery spike: DONE (2026-07-23)** — decision is Flipp-first hybrid; see the dated entry above and `Reference Files/phase0-flyer-discovery-findings.md`.
+- **Phase 0.5 — real DiscoveryAgent: NOT started** — wire Flipp/Apify fetch + Claude extraction behind the existing DiscoveryAgent interface; Supabase Postgres for shared deal cache + accumulating French label→ingredient dictionary. This is what puts real Montreal prices in front of the pilot user. All flyer data is still mocked until this ships.
+- Get a legal read on the chains' "personal, non-commercial use" terms before production scale-up.
 - Business model decision (needed before Phase 2 monetization work).
 - Recipe database: build vs license decision.
 - Real recipe images (placeholder art currently).
