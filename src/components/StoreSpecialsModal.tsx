@@ -1,9 +1,13 @@
 import React, { useMemo } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { colors, fontSizes, fontWeights, radii, spacing } from '@/theme/tokens';
-import { Badge } from '@/ui/primitives';
+import { Badge, Button } from '@/ui/primitives';
+import { Icon } from '@/ui/Icon';
 import { Modal } from '@/ui/Overlay';
-import { formatUnitPrice } from '@/domain/format';
+import { formatUnitPrice, formatDualMassPrice } from '@/domain/format';
+import { isMassUnit } from '@/domain/units';
+import { CHAIN_FLYER_URLS } from '@/data/flyerUrls';
+import { openExternalUrl } from '@/services/links';
 import { useDiscoveryStore } from '@/state/discoveryStore';
 
 /** Whole-percent discount, guarding against a zero/negative regular price. */
@@ -28,7 +32,9 @@ function formatValidity(from: string, to: string): string {
 /**
  * Modal (not a route — the underlying deals live in transient zustand state)
  * listing this week's flyer specials for one store, opened by tapping the store
- * name in the shopping list. Deals are sorted by discount, deepest first.
+ * name in the shopping list. Deals are sorted by discount, deepest first. Mass
+ * deals show a dual $/lb · $/kg price so the shelf tag and recipe unit both read
+ * cleanly; each deal and the store footer link out to the source flyer.
  */
 export function StoreSpecialsModal({
   storeId,
@@ -42,6 +48,12 @@ export function StoreSpecialsModal({
   onClose: () => void;
 }) {
   const deals = useDiscoveryStore((s) => s.result?.deals);
+  const stores = useDiscoveryStore((s) => s.result?.stores);
+
+  const store = useMemo(
+    () => (stores ?? []).find((s) => s.id === storeId),
+    [stores, storeId],
+  );
 
   const storeDeals = useMemo(() => {
     return (deals ?? [])
@@ -54,12 +66,29 @@ export function StoreSpecialsModal({
       );
   }, [deals, storeId]);
 
+  const flyerUrl =
+    store?.flyerUrl ?? (store ? CHAIN_FLYER_URLS[store.chain] : undefined);
+
   return (
     <Modal
       visible={visible}
       onClose={onClose}
       title={storeName}
       subtitle="This week's flyer specials"
+      footer={
+        <View style={styles.footerContent}>
+          {flyerUrl ? (
+            <Button
+              label="View full flyer"
+              icon="open-outline"
+              variant="secondary"
+              fullWidth
+              onPress={() => openExternalUrl(flyerUrl)}
+            />
+          ) : null}
+          <Text style={styles.cadNote}>All prices in CAD</Text>
+        </View>
+      }
     >
       {storeDeals.length === 0 ? (
         <Text style={styles.empty}>No current specials for this store.</Text>
@@ -69,7 +98,18 @@ export function StoreSpecialsModal({
           return (
             <View key={deal.id} style={styles.row}>
               <View style={styles.info}>
-                <Text style={styles.label}>{deal.label}</Text>
+                <View style={styles.labelRow}>
+                  <Text style={styles.label}>{deal.label}</Text>
+                  {deal.sourceUrl ? (
+                    <Pressable
+                      onPress={() => openExternalUrl(deal.sourceUrl!)}
+                      hitSlop={8}
+                      accessibilityLabel={`Open flyer source for ${deal.label}`}
+                    >
+                      <Icon name="open-outline" size={14} color={colors.brand} />
+                    </Pressable>
+                  ) : null}
+                </View>
                 <Text style={styles.validity}>
                   {formatValidity(deal.validFrom, deal.validTo)}
                 </Text>
@@ -77,7 +117,9 @@ export function StoreSpecialsModal({
               <View style={styles.priceCol}>
                 <View style={styles.priceRow}>
                   <Text style={styles.sale}>
-                    {formatUnitPrice(deal.salePrice, deal.unit)}
+                    {isMassUnit(deal.unit)
+                      ? formatDualMassPrice(deal.salePrice, deal.unit)
+                      : formatUnitPrice(deal.salePrice, deal.unit)}
                   </Text>
                   <Text style={styles.regular}>
                     {formatUnitPrice(deal.regularPrice, deal.unit)}
@@ -112,14 +154,17 @@ const styles = StyleSheet.create({
     padding: spacing.md,
   },
   info: { flex: 1, gap: 2 },
+  labelRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
   label: { fontSize: fontSizes.md, fontWeight: fontWeights.semibold, color: colors.text },
   validity: { fontSize: fontSizes.xs, color: colors.textMuted },
   priceCol: { alignItems: 'flex-end', gap: spacing.xs },
-  priceRow: { flexDirection: 'row', alignItems: 'baseline', gap: spacing.sm },
+  priceRow: { flexDirection: 'row', alignItems: 'baseline', gap: spacing.sm, flexWrap: 'wrap', justifyContent: 'flex-end' },
   sale: { fontSize: fontSizes.md, fontWeight: fontWeights.bold, color: colors.success },
   regular: {
     fontSize: fontSizes.sm,
     color: colors.textFaint,
     textDecorationLine: 'line-through',
   },
+  footerContent: { flex: 1, gap: spacing.sm },
+  cadNote: { fontSize: fontSizes.xs, color: colors.textFaint, textAlign: 'center' },
 });

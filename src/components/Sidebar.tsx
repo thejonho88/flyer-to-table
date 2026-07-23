@@ -4,6 +4,8 @@ import { usePathname, useRouter } from 'expo-router';
 import { colors, fontSizes, fontWeights, radii, spacing } from '@/theme/tokens';
 import { Icon, IconName } from '@/ui/Icon';
 import { usePlanStore } from '@/state/planStore';
+import { usePreferencesStore } from '@/state/preferencesStore';
+import { recoveryRouteFor } from '@/domain/recovery';
 
 interface NavItem {
   label: string;
@@ -24,7 +26,14 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
   const generate = usePlanStore((s) => s.generate);
 
   const onGenerate = async () => {
-    await generate();
+    const plan = await generate();
+    if (!plan) {
+      // No discovery context (cache invalidated/expired). Recover loudly by
+      // re-running discovery for the saved postal, never a silent no-op.
+      const prefs = usePreferencesStore.getState().preferences;
+      router.replace(recoveryRouteFor(prefs));
+      return;
+    }
     router.push('/home');
   };
 

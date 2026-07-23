@@ -1,7 +1,10 @@
 import type { Chain, Deal, DiscoveryResult, Store } from '@/domain/types';
 import { CHAIN_LABELS } from '@/domain/types';
+import { convertUnitPrice, isMassUnit } from '@/domain/units';
+import { round2 } from '@/domain/costing';
 import { getIngredient } from './ingredients';
 import { BASE_PRICES } from './pricing';
+import { CHAIN_FLYER_URLS } from './flyerUrls';
 
 /**
  * Seeded Montreal flyer data. Stores are grouped by FSA (first 3 chars of a
@@ -15,7 +18,11 @@ import { BASE_PRICES } from './pricing';
 
 interface SeededStore extends Store {
   fsa: string;
-  /** [ingredientId, salePrice] pairs that are on sale this cycle. */
+  /**
+   * [ingredientId, salePrice] pairs on sale this cycle. salePrice is expressed
+   * in the ingredient's flyer unit — per 'lb' for meats (BASE_PRICES.flyerUnit),
+   * otherwise in its canonical unit (per 'g' for fish, per package otherwise).
+   */
   sales: [string, number][];
 }
 
@@ -40,7 +47,7 @@ const SEEDED_STORES: SeededStore[] = [
     distanceKm: 0.6,
     dealCount: 0,
     sales: [
-      ['chicken_thigh', 6.6],
+      ['chicken_thigh', 2.99],
       ['broccoli', 1.99],
       ['greek_yogurt', 3.49],
       ['rice', 4.49],
@@ -77,7 +84,7 @@ const SEEDED_STORES: SeededStore[] = [
     distanceKm: 1.4,
     dealCount: 0,
     sales: [
-      ['ground_beef', 7.7],
+      ['ground_beef', 4.99],
       ['pasta', 1.29],
       ['tomato_sauce', 1.99],
       ['mushroom', 1.99],
@@ -94,7 +101,7 @@ const SEEDED_STORES: SeededStore[] = [
     distanceKm: 2.2,
     dealCount: 0,
     sales: [
-      ['pork_shoulder', 4.49],
+      ['pork_shoulder', 2.99],
       ['chickpeas', 0.99],
       ['black_beans', 0.99],
       ['lentils', 2.49],
@@ -113,7 +120,7 @@ const SEEDED_STORES: SeededStore[] = [
     distanceKm: 1.8,
     dealCount: 0,
     sales: [
-      ['beef_strips', 11.99],
+      ['beef_strips', 9.99],
       ['chicken_breast', 8.99],
       ['shrimp', 0.022],
       ['quinoa', 4.99],
@@ -135,7 +142,7 @@ const SEEDED_STORES: SeededStore[] = [
     distanceKm: 0.9,
     dealCount: 0,
     sales: [
-      ['chicken_breast', 9.49],
+      ['chicken_breast', 8.99],
       ['broccoli', 2.19],
       ['salmon', 0.027],
       ['rice', 4.79],
@@ -167,11 +174,11 @@ const SEEDED_STORES: SeededStore[] = [
     distanceKm: 1.7,
     dealCount: 0,
     sales: [
-      ['ground_beef', 8.2],
+      ['ground_beef', 5.29],
       ['pasta', 1.49],
       ['tomato_sauce', 2.19],
       ['mushroom', 2.29],
-      ['pork_shoulder', 5.29],
+      ['pork_shoulder', 3.19],
       ['tortilla', 2.79],
     ],
   },
@@ -183,7 +190,7 @@ const SEEDED_STORES: SeededStore[] = [
     distanceKm: 2.0,
     dealCount: 0,
     sales: [
-      ['beef_strips', 12.49],
+      ['beef_strips', 9.99],
       ['chickpeas', 1.09],
       ['black_beans', 1.09],
       ['quinoa', 5.29],
@@ -202,7 +209,7 @@ const SEEDED_STORES: SeededStore[] = [
     distanceKm: 0.7,
     dealCount: 0,
     sales: [
-      ['chicken_thigh', 6.9],
+      ['chicken_thigh', 3.29],
       ['salmon', 0.026],
       ['broccoli', 2.09],
       ['penne_ww', 2.09],
@@ -234,7 +241,7 @@ const SEEDED_STORES: SeededStore[] = [
     distanceKm: 1.9,
     dealCount: 0,
     sales: [
-      ['pork_shoulder', 4.69],
+      ['pork_shoulder', 3.09],
       ['chickpeas', 1.05],
       ['lentils', 2.59],
       ['coconut_milk', 1.85],
@@ -251,7 +258,7 @@ const SEEDED_STORES: SeededStore[] = [
     distanceKm: 1.5,
     dealCount: 0,
     sales: [
-      ['ground_beef', 7.9],
+      ['ground_beef', 5.19],
       ['pasta', 1.39],
       ['tomato_sauce', 2.09],
       ['mushroom', 2.09],
@@ -269,7 +276,7 @@ const SEEDED_STORES: SeededStore[] = [
     distanceKm: 0.8,
     dealCount: 0,
     sales: [
-      ['beef_strips', 11.79],
+      ['beef_strips', 9.79],
       ['chicken_breast', 8.79],
       ['quinoa', 4.89],
       ['kale', 1.89],
@@ -286,8 +293,8 @@ const SEEDED_STORES: SeededStore[] = [
     distanceKm: 1.2,
     dealCount: 0,
     sales: [
-      ['pork_shoulder', 4.39],
-      ['ground_pork', 6.2],
+      ['pork_shoulder', 2.89],
+      ['ground_pork', 3.49],
       ['chickpeas', 0.95],
       ['black_beans', 0.95],
       ['lentils', 2.39],
@@ -321,7 +328,7 @@ const SEEDED_STORES: SeededStore[] = [
     distanceKm: 0.9,
     dealCount: 0,
     sales: [
-      ['chicken_thigh', 6.8],
+      ['chicken_thigh', 3.19],
       ['broccoli', 2.09],
       ['rice', 4.69],
       ['canned_tomatoes', 1.39],
@@ -337,7 +344,7 @@ const SEEDED_STORES: SeededStore[] = [
     distanceKm: 1.4,
     dealCount: 0,
     sales: [
-      ['ground_beef', 8.1],
+      ['ground_beef', 5.09],
       ['pasta', 1.45],
       ['tomato_sauce', 2.15],
       ['mushroom', 2.19],
@@ -353,8 +360,8 @@ const SEEDED_STORES: SeededStore[] = [
     distanceKm: 2.1,
     dealCount: 0,
     sales: [
-      ['beef_strips', 12.29],
-      ['chicken_breast', 9.19],
+      ['beef_strips', 9.99],
+      ['chicken_breast', 8.99],
       ['quinoa', 5.09],
       ['avocado', 1.05],
       ['lime', 0.45],
@@ -369,7 +376,7 @@ const SEEDED_STORES: SeededStore[] = [
     distanceKm: 2.4,
     dealCount: 0,
     sales: [
-      ['pork_shoulder', 4.59],
+      ['pork_shoulder', 3.09],
       ['chickpeas', 1.0],
       ['lentils', 2.49],
       ['coconut_milk', 1.8],
@@ -380,13 +387,28 @@ const SEEDED_STORES: SeededStore[] = [
   },
 ];
 
-function buildDealsForStore(storeId: string, sales: [string, number][]): Deal[] {
+function buildDealsForStore(
+  storeId: string,
+  sales: [string, number][],
+  chain: Chain,
+): Deal[] {
   const { validFrom, validTo } = flyerWindow();
+  const sourceUrl = CHAIN_FLYER_URLS[chain];
   const deals: Deal[] = [];
   for (const [ingredientId, salePrice] of sales) {
     const base = BASE_PRICES[ingredientId];
     const ing = getIngredient(ingredientId);
     if (!base || !ing) continue; // guard against typos in the seed
+    // Deals are advertised in the flyer unit. For meats that's 'lb': the seed
+    // salePrice is already per-lb; the regular is the canonical (per-kg) base
+    // converted to per-lb so both sides of the deal share one unit.
+    const flyerUnit = base.flyerUnit;
+    let unit = base.unit;
+    let regularPrice = base.unitPrice;
+    if (flyerUnit && isMassUnit(base.unit)) {
+      unit = flyerUnit;
+      regularPrice = round2(convertUnitPrice(base.unitPrice, base.unit, flyerUnit));
+    }
     deals.push({
       id: `${storeId}__${ingredientId}`,
       storeId,
@@ -394,8 +416,9 @@ function buildDealsForStore(storeId: string, sales: [string, number][]): Deal[] 
       label: ing.name,
       labelFr: ing.nameFr,
       salePrice,
-      regularPrice: base.unitPrice,
-      unit: base.unit,
+      regularPrice,
+      unit,
+      sourceUrl,
       validFrom,
       validTo,
     });
@@ -415,7 +438,7 @@ function buildArea(fsa: string): AreaData | null {
   if (seeded.length === 0) return null;
   const deals: Deal[] = [];
   const stores: Store[] = seeded.map((s) => {
-    const storeDeals = buildDealsForStore(s.id, s.sales);
+    const storeDeals = buildDealsForStore(s.id, s.sales, s.chain);
     deals.push(...storeDeals);
     return {
       id: s.id,
@@ -423,6 +446,7 @@ function buildArea(fsa: string): AreaData | null {
       name: s.name,
       distanceKm: s.distanceKm,
       dealCount: storeDeals.length,
+      flyerUrl: CHAIN_FLYER_URLS[s.chain],
     };
   });
   return { stores, deals };
@@ -530,12 +554,13 @@ export const CHAIN_CATALOG: Chain[] = [
 /**
  * Per-chain sale seeds for user-added stores. Ingredient ids key into
  * BASE_PRICES (validated by buildDealsForStore) and every sale price sits a
- * realistic 15–40% below its regular price — never a fake deep discount that
- * would wrongly dominate the sale-weighted planner.
+ * realistic 15–40% below its regular price (compared in a common unit) — never
+ * a fake deep discount that would wrongly dominate the sale-weighted planner.
+ * Meat sale prices are per 'lb' (the flyer unit); fish stays per 'g'.
  */
 export const CHAIN_DEAL_SEEDS: Record<Chain, [string, number][]> = {
   metro: [
-    ['chicken_thigh', 6.99],
+    ['chicken_thigh', 2.99],
     ['broccoli', 1.99],
     ['greek_yogurt', 3.29],
     ['rice', 3.99],
@@ -549,14 +574,14 @@ export const CHAIN_DEAL_SEEDS: Record<Chain, [string, number][]> = {
     ['eggs', 3.79],
   ],
   provigo: [
-    ['ground_beef', 7.99],
+    ['ground_beef', 4.99],
     ['pasta', 1.79],
     ['tomato_sauce', 2.29],
     ['mushroom', 2.19],
     ['cheddar', 4.99],
   ],
   maxi: [
-    ['pork_shoulder', 6.49],
+    ['pork_shoulder', 2.99],
     ['chickpeas', 0.99],
     ['lentils', 2.49],
     ['coconut_milk', 1.79],
@@ -570,7 +595,7 @@ export const CHAIN_DEAL_SEEDS: Record<Chain, [string, number][]> = {
     ['kale', 1.99],
   ],
   loblaws: [
-    ['chicken_breast', 9.49],
+    ['chicken_breast', 8.99],
     ['broccoli', 1.89],
     ['greek_yogurt', 3.39],
     ['pasta', 1.79],
@@ -579,8 +604,8 @@ export const CHAIN_DEAL_SEEDS: Record<Chain, [string, number][]> = {
     ['spinach', 2.59],
   ],
   walmart: [
-    ['ground_beef', 7.99],
-    ['chicken_thigh', 6.99],
+    ['ground_beef', 4.99],
+    ['chicken_thigh', 2.99],
     ['eggs', 3.79],
     ['rice', 3.99],
     ['tortilla', 2.49],
@@ -626,13 +651,14 @@ export function makeAddedStore(chain: Chain, fsa: string): AddedStoreBundle {
   const fsaUpper = fsa.toUpperCase();
   const id = addedStoreIdFor(chain, fsa);
   const sales = CHAIN_DEAL_SEEDS[chain] ?? [];
-  const deals = buildDealsForStore(id, sales);
+  const deals = buildDealsForStore(id, sales, chain);
   const store: Store = {
     id,
     chain,
     name: `${CHAIN_LABELS[chain]} ${ADDED_NAME_QUARTIER[chain]} ${fsaUpper}`,
     distanceKm: jitterDistance(2.5, fsaUpper, id),
     dealCount: deals.length,
+    flyerUrl: CHAIN_FLYER_URLS[chain],
   };
   return { store, deals };
 }

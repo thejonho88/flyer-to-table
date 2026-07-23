@@ -12,16 +12,24 @@ import { MealCard } from '@/components/MealCard';
 import { SwapModal } from '@/components/SwapModal';
 import { PreferencesDrawer } from '@/components/PreferencesDrawer';
 import { formatWeekOf } from '@/domain/dates';
+import { recoveryRouteFor } from '@/domain/recovery';
 
 export function MealPlanScreen() {
   const router = useRouter();
   const plan = usePlanStore((s) => s.plan);
   const generate = usePlanStore((s) => s.generate);
   const status = usePlanStore((s) => s.status);
-  const postal = usePreferencesStore((s) => s.preferences?.postalCode);
+  const preferences = usePreferencesStore((s) => s.preferences);
+  const postal = preferences?.postalCode;
 
   const [swapDay, setSwapDay] = useState<number | null>(null);
   const [prefsOpen, setPrefsOpen] = useState(false);
+
+  const onGenerate = async () => {
+    const next = await generate();
+    // Null => no discovery context; recover to discovery/postal, never no-op.
+    if (!next) router.replace(recoveryRouteFor(preferences));
+  };
 
   if (!plan) {
     return (
@@ -38,7 +46,7 @@ export function MealPlanScreen() {
             label="Generate Meal Plan"
             icon="sparkles"
             loading={status === 'generating'}
-            onPress={() => generate()}
+            onPress={onGenerate}
           />
         </Card>
       </View>

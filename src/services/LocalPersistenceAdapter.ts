@@ -7,10 +7,18 @@ import type {
 import { fsaOf } from '@/domain/postal';
 import { kv } from './storage';
 
+/**
+ * Discovery-cache schema version. Bump whenever the shape or units of cached
+ * deals change so stale entries can never mix with new code. v2 introduced
+ * flyer-unit (per-lb) meat deals + sourceUrl/flyerUrl; a v1 cache would hand the
+ * new resolver old per-kg-as-lb prices, so it must not be read back.
+ */
+const DISCOVERY_CACHE_VERSION = 'v2';
+
 const KEYS = {
   preferences: 'ftt:preferences',
   plan: 'ftt:plan:current',
-  discovery: (fsa: string) => `ftt:discovery:${fsa}`,
+  discovery: (fsa: string) => `ftt:discovery:${DISCOVERY_CACHE_VERSION}:${fsa}`,
   checklist: (planId: string) => `ftt:checklist:${planId}`,
 };
 

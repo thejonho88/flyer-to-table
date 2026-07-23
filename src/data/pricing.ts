@@ -7,9 +7,20 @@
  * items; this table is the fallback regular price for everything else.
  * Prices are CAD. Staples are intentionally absent (excluded from cost).
  */
+import type { MassUnit } from '@/domain/units';
+
 export interface BasePrice {
+  /** Regular price per `unit` (canonical unit — matches recipe quantities). */
   unitPrice: number;
+  /** Canonical unit recipes express this ingredient in. */
   unit: string;
+  /**
+   * Flyer/pricing unit the retailer advertises this item in, when it differs
+   * from the canonical unit. Meats are priced per 'lb' at the shelf but recipes
+   * use 'kg'; deals are emitted per flyerUnit and converted back to canonical by
+   * the PricingResolver. Absent → the item is priced in its canonical unit.
+   */
+  flyerUnit?: MassUnit;
 }
 
 export const BASE_PRICES: Record<string, BasePrice> = {
@@ -35,13 +46,18 @@ export const BASE_PRICES: Record<string, BasePrice> = {
   kale: { unitPrice: 2.79, unit: 'bunch' },
   corn: { unitPrice: 0.99, unit: 'unit' },
 
-  // Meat & seafood
-  chicken_thigh: { unitPrice: 9.9, unit: 'kg' },
-  chicken_breast: { unitPrice: 13.2, unit: 'kg' },
-  ground_beef: { unitPrice: 11.0, unit: 'kg' },
-  beef_strips: { unitPrice: 17.6, unit: 'kg' },
-  pork_shoulder: { unitPrice: 8.8, unit: 'kg' },
-  ground_pork: { unitPrice: 9.9, unit: 'kg' },
+  // Meat — advertised per lb at the shelf (flyerUnit 'lb'); canonical unit is
+  // kg to match recipe quantities. Regulars reflect realistic Montreal flyer
+  // levels (e.g. chicken breast $10.99/lb ≈ $24.23/kg — the Super C example the
+  // product owner supplied).
+  chicken_thigh: { unitPrice: 9.9, unit: 'kg', flyerUnit: 'lb' }, // $4.49/lb
+  chicken_breast: { unitPrice: 24.23, unit: 'kg', flyerUnit: 'lb' }, // $10.99/lb
+  ground_beef: { unitPrice: 14.31, unit: 'kg', flyerUnit: 'lb' }, // $6.49/lb
+  beef_strips: { unitPrice: 26.43, unit: 'kg', flyerUnit: 'lb' }, // $11.99/lb
+  pork_shoulder: { unitPrice: 8.8, unit: 'kg', flyerUnit: 'lb' }, // $3.99/lb
+  ground_pork: { unitPrice: 9.9, unit: 'kg', flyerUnit: 'lb' }, // $4.49/lb
+
+  // Seafood — priced per gram (canonical) at these stores; stays per-'g'.
   salmon: { unitPrice: 0.033, unit: 'g' },
   tilapia: { unitPrice: 0.022, unit: 'g' },
   shrimp: { unitPrice: 0.03, unit: 'g' },

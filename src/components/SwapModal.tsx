@@ -6,6 +6,7 @@ import { Icon } from '@/ui/Icon';
 import { Button, Badge } from '@/ui/primitives';
 import { Modal } from '@/ui/Overlay';
 import { usePlanStore } from '@/state/planStore';
+import { formatMoney } from '@/domain/money';
 
 export function SwapModal({
   day,
@@ -47,13 +48,13 @@ export function SwapModal({
             <View style={styles.altBody}>
               <View style={styles.altHeader}>
                 <Text style={styles.altName}>{alt.recipe.name}</Text>
-                {alt.savings > 0 ? <Badge label={`Save $${alt.savings.toFixed(2)}`} /> : null}
+                {alt.savings > 0 ? <Badge label={`Save ${formatMoney(alt.savings)}`} /> : null}
               </View>
               <View style={styles.metaRow}>
                 <Icon name="time-outline" size={13} color={colors.textMuted} />
                 <Text style={styles.meta}>{alt.recipe.cookTimeMinutes} min</Text>
                 <Text style={styles.dot}>·</Text>
-                <Text style={styles.meta}>${alt.estimatedCost.toFixed(2)}</Text>
+                <Text style={styles.meta}>{formatMoney(alt.estimatedCost)}</Text>
               </View>
               <Text style={styles.rationale}>{alt.rationale}</Text>
               <View style={styles.swapAction}>

@@ -10,14 +10,10 @@ import { usePlanStore } from '@/state/planStore';
 import { useChecklistStore } from '@/state/checklistStore';
 import { itemKey, shoppingListStats } from '@/domain/shoppingList';
 import { formatWeekOf } from '@/domain/dates';
-import { formatUnitPrice } from '@/domain/format';
+import { formatQty, formatUnitPrice } from '@/domain/format';
+import { formatMoney } from '@/domain/money';
 import { shareText, shoppingListToText } from '@/services/share';
 import { StoreSpecialsModal } from '@/components/StoreSpecialsModal';
-
-function formatQty(quantity: number, unit: string): string {
-  const q = Number.isInteger(quantity) ? String(quantity) : quantity.toFixed(2);
-  return `${q} ${unit}`;
-}
 
 export function ShoppingListScreen() {
   const router = useRouter();
@@ -102,7 +98,7 @@ export function ShoppingListScreen() {
               </Pressable>
               <Text style={styles.storeChain}>{CHAIN_LABELS[group.store.chain]}</Text>
               <Text style={styles.storeItems}>{group.items.length} items</Text>
-              <Text style={styles.storeSubtotal}>${group.subtotal.toFixed(2)}</Text>
+              <Text style={styles.storeSubtotal}>{formatMoney(group.subtotal)}</Text>
             </Pressable>
 
             {!isCollapsed
@@ -126,11 +122,12 @@ export function ShoppingListScreen() {
       <Card style={styles.footer}>
         <View>
           <Text style={styles.footerLabel}>Estimated Weekly Total</Text>
-          <Text style={styles.footerTotal}>${list.totals.estimated.toFixed(2)}</Text>
+          <Text style={styles.footerTotal}>{formatMoney(list.totals.estimated)}</Text>
+          <Text style={styles.cadNote}>All prices in CAD</Text>
         </View>
         <View style={styles.footerRight}>
           <View style={{ alignItems: 'flex-end' }}>
-            <Text style={styles.savings}>You save ${list.totals.savings.toFixed(2)}</Text>
+            <Text style={styles.savings}>You save {formatMoney(list.totals.savings)}</Text>
             <Text style={styles.savingsSub}>vs. regular prices</Text>
           </View>
           <Button label={shareMsg ?? 'Share List'} icon="share-outline" onPress={onShare} />
@@ -167,7 +164,7 @@ function ItemRow({
         <Text style={styles.itemQty}>
           {`${formatQty(item.quantity, item.unit)} × ${formatUnitPrice(item.unitPrice, item.unit)}`}
         </Text>
-        <Text style={styles.itemPrice}>${item.lineTotal.toFixed(2)}</Text>
+        <Text style={styles.itemPrice}>{formatMoney(item.lineTotal)}</Text>
       </View>
     </View>
   );
@@ -202,6 +199,7 @@ const styles = StyleSheet.create({
   footer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.lg, flexWrap: 'wrap' },
   footerLabel: { fontSize: fontSizes.sm, color: colors.textMuted },
   footerTotal: { fontSize: fontSizes.xxl, fontWeight: fontWeights.bold, color: colors.text },
+  cadNote: { fontSize: fontSizes.xs, color: colors.textFaint, marginTop: 2 },
   footerRight: { flexDirection: 'row', alignItems: 'center', gap: spacing.lg },
   savings: { fontSize: fontSizes.md, fontWeight: fontWeights.bold, color: colors.success },
   savingsSub: { fontSize: fontSizes.xs, color: colors.textMuted },

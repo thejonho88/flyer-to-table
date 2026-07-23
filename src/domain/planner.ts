@@ -7,6 +7,7 @@ import type {
   SwapAlternative,
 } from './types';
 import { BASE_PRICES } from '@/data/pricing';
+import { formatMoney } from './money';
 import { recipePassesHardConstraints } from './filters';
 import {
   MealCost,
@@ -222,7 +223,7 @@ export function applySwap(
 function buildRationale(s: ScoredRecipe, ctx: PlanContext): string {
   const savings = round2(s.cost.regularCost - s.cost.estimatedCost);
   if (s.cost.saleIngredientIds.length === 0) {
-    return `Budget-friendly at $${s.cost.estimatedCost.toFixed(2)} — no sale items needed.`;
+    return `Budget-friendly at ${formatMoney(s.cost.estimatedCost)} — no sale items needed.`;
   }
   const labelById = new Map(ctx.ingredients.map((i) => [i.id, i.name]));
   const names = s.cost.saleIngredientIds
@@ -232,6 +233,6 @@ function buildRationale(s: ScoredRecipe, ctx: PlanContext): string {
     names.length === 1
       ? names[0]
       : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
-  const savingsText = savings > 0 ? ` — save $${savings.toFixed(2)} vs. regular` : '';
+  const savingsText = savings > 0 ? ` — save ${formatMoney(savings)} vs. regular` : '';
   return `${list} on sale this week${savingsText}.`;
 }

@@ -16,6 +16,7 @@ import {
   rebuildAddedStoreFromId,
 } from '@/data/deals';
 import { BASE_PRICES } from '@/data/pricing';
+import { convertUnitPrice, isMassUnit } from '@/domain/units';
 import { getIngredient, isPantryStaple } from '@/data/ingredients';
 import { buildPlanContext } from '@/domain/context';
 import { generatePlan } from '@/domain/planner';
@@ -92,6 +93,11 @@ describe('formatUnitPrice', () => {
     expect(formatUnitPrice(2, 'box')).toBe('$2.00');
     expect(formatUnitPrice(1.5, 'unit')).toBe('$1.50');
   });
+
+  it('adds per-lb and per-kg suffixes for mass units', () => {
+    expect(formatUnitPrice(8.99, 'lb')).toBe('$8.99/lb');
+    expect(formatUnitPrice(24.23, 'kg')).toBe('$24.23/kg');
+  });
 });
 
 /* ------------------------------ seed sanity ------------------------------- */
@@ -110,8 +116,15 @@ describe('CHAIN_DEAL_SEEDS', () => {
         const base = BASE_PRICES[ingredientId];
         expect(base).toBeDefined();
         expect(getIngredient(ingredientId)).toBeDefined();
-        expect(salePrice).toBeLessThan(base.unitPrice);
-        const pct = (1 - salePrice / base.unitPrice) * 100;
+        // Seed sale prices are in the flyer unit (per-lb for meats); compare
+        // against the regular converted into that same unit.
+        const flyerUnit = base.flyerUnit ?? base.unit;
+        const regularInFlyerUnit =
+          base.flyerUnit && isMassUnit(base.unit) && isMassUnit(flyerUnit)
+            ? convertUnitPrice(base.unitPrice, base.unit, flyerUnit)
+            : base.unitPrice;
+        expect(salePrice).toBeLessThan(regularInFlyerUnit);
+        const pct = (1 - salePrice / regularInFlyerUnit) * 100;
         expect(pct).toBeGreaterThanOrEqual(15);
         expect(pct).toBeLessThanOrEqual(40);
       }

@@ -4,6 +4,7 @@ import type { PlannedMeal, Recipe } from '@/domain/types';
 import { colors, fontSizes, fontWeights, radii, shadow, spacing } from '@/theme/tokens';
 import { Icon } from '@/ui/Icon';
 import { Badge } from '@/ui/primitives';
+import { formatMoney } from '@/domain/money';
 
 const WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
@@ -35,7 +36,7 @@ export function MealCard({
           <Text style={styles.time}>{recipe.cookTimeMinutes} min</Text>
         </View>
         <View style={styles.priceRow}>
-          <Text style={styles.price}>${meal.estimatedCost.toFixed(2)}</Text>
+          <Text style={styles.price}>{formatMoney(meal.estimatedCost)}</Text>
           {onSale ? <Badge label="On Sale" tone="success" /> : null}
         </View>
       </View>

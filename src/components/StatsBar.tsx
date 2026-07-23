@@ -3,6 +3,7 @@ import { StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import type { MealPlan } from '@/domain/types';
 import { colors, fontSizes, fontWeights, spacing, NARROW_BREAKPOINT } from '@/theme/tokens';
 import { Card, Button } from '@/ui/primitives';
+import { formatMoney } from '@/domain/money';
 
 export function StatsBar({
   plan,
@@ -18,11 +19,11 @@ export function StatsBar({
   return (
     <Card style={narrow ? styles.cardNarrow : styles.card}>
       <View style={[styles.stats, narrow && styles.statsNarrow]}>
-        <Stat label="Estimated Weekly Cost" value={`$${totals.estimated.toFixed(2)}`} />
+        <Stat label="Estimated Weekly Cost" value={formatMoney(totals.estimated)} />
         <Divider narrow={narrow} />
         <Stat
           label="Savings vs Regular Price"
-          value={`$${totals.savings.toFixed(2)}`}
+          value={formatMoney(totals.savings)}
           accent
           suffix={`${totals.savingsPct}% off`}
         />

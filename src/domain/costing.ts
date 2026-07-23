@@ -6,14 +6,51 @@ import type {
   Recipe,
   Store,
 } from './types';
+import { convertQty, convertUnitPrice, isMassUnit } from './units';
 
 /** Round to cents to avoid floating-point noise in money math. */
 export function round2(n: number): number {
   return Math.round((n + Number.EPSILON) * 100) / 100;
 }
 
-/** Units measured continuously; everything else is a discrete package. */
-const CONTINUOUS_UNITS = new Set(['kg', 'g', 'l', 'ml', 'tbsp', 'tsp', 'cup']);
+/**
+ * Units measured continuously; everything else is a discrete package. 'lb' is
+ * continuous so e.g. 2.2 lb of meat does not ceil up to a phantom 3rd pound.
+ */
+const CONTINUOUS_UNITS = new Set(['kg', 'g', 'lb', 'l', 'ml', 'tbsp', 'tsp', 'cup']);
+
+/** Base-price shape the resolver needs. Widened to carry an optional flyer unit. */
+export interface BasePriceLike {
+  unitPrice: number;
+  unit: string;
+  flyerUnit?: string;
+}
+
+/**
+ * Reconcile a recipe-authored quantity into the pricing/canonical unit so cost
+ * is always `quantity × unitPrice` in a single consistent unit.
+ *  - same unit → passthrough,
+ *  - both mass units → exact conversion,
+ *  - anything else (mass vs non-mass, or two different non-mass units) → a loud
+ *    dev error and a passthrough, so we never silently multiply mismatched units.
+ */
+export function reconcileQtyToPricingUnit(
+  quantity: number,
+  recipeUnit: string,
+  pricingUnit: string,
+): number {
+  if (recipeUnit === pricingUnit) return quantity;
+  if (isMassUnit(recipeUnit) && isMassUnit(pricingUnit)) {
+    return convertQty(quantity, recipeUnit, pricingUnit);
+  }
+  // Mismatched, non-convertible units: this is a data bug. Be loud, never guess.
+  const msg =
+    `[costing] unit mismatch: recipe unit "${recipeUnit}" cannot be reconciled ` +
+    `with pricing unit "${pricingUnit}". Prices/quantities may be wrong.`;
+  if (typeof console !== 'undefined') console.error(msg);
+  if (__DEV__) throw new Error(msg);
+  return quantity;
+}
 
 /**
  * Purchasable quantity: discrete packages (cans, bags, packs, units…) round
@@ -27,12 +64,23 @@ export function purchasableQuantity(quantity: number, unit: string): number {
 export interface IngredientPricing {
   ingredientId: string;
   label: string;
+  /** Canonical unit — matches the recipe/BASE_PRICES unit (e.g. 'kg'). */
   unit: string;
   onSale: boolean;
-  /** Effective price per unit (sale price if on sale, else regular). */
+  /** Effective price per CANONICAL unit (sale price if on sale, else regular). */
   unitPrice: number;
-  /** Regular (non-sale) price per unit. */
+  /** Regular (non-sale) price per CANONICAL unit. */
   regularUnitPrice: number;
+  /**
+   * Pricing/display unit — the flyer's own unit (e.g. 'lb'). Equals `unit` when
+   * the item is priced in its canonical unit. Shopping-list lines render in this
+   * unit; per-meal cost math uses the canonical unit above.
+   */
+  displayUnit: string;
+  /** Effective price per DISPLAY unit. */
+  displayUnitPrice: number;
+  /** Regular price per DISPLAY unit. */
+  regularDisplayUnitPrice: number;
   /** Store the item is sourced from (deal store, or nearest selected store). */
   storeId: string;
 }
@@ -46,12 +94,9 @@ export class PricingResolver {
   private readonly dealByIngredient: Map<string, Deal>;
   private readonly ingredientById: Map<string, Ingredient>;
   private readonly nearestStoreId: string | undefined;
-  private readonly basePrices: Record<string, { unitPrice: number; unit: string }>;
+  private readonly basePrices: Record<string, BasePriceLike>;
 
-  constructor(
-    ctx: PlanContext,
-    basePrices: Record<string, { unitPrice: number; unit: string }>,
-  ) {
+  constructor(ctx: PlanContext, basePrices: Record<string, BasePriceLike>) {
     this.ingredientById = new Map(ctx.ingredients.map((i) => [i.id, i]));
     this.basePrices = basePrices;
 
@@ -64,11 +109,14 @@ export class PricingResolver {
     )[0]?.id;
 
     // Keep only the lowest sale price per ingredient across selected stores.
+    // Prices are compared like-for-like: mass-priced deals are normalized to a
+    // per-gram basis so a $/lb deal and a $/kg deal are ranked correctly; other
+    // units compare raw (deals for one ingredient share a unit in practice).
     this.dealByIngredient = new Map();
     for (const deal of ctx.deals) {
       if (selected.size > 0 && !selected.has(deal.storeId)) continue;
       const existing = this.dealByIngredient.get(deal.ingredientId);
-      if (!existing || deal.salePrice < existing.salePrice) {
+      if (!existing || comparableSalePrice(deal) < comparableSalePrice(existing)) {
         this.dealByIngredient.set(deal.ingredientId, deal);
       }
     }
@@ -81,19 +129,34 @@ export class PricingResolver {
 
     const deal = this.dealByIngredient.get(ingredientId);
     if (deal) {
+      // Canonical unit is the recipe/BASE_PRICES unit; the deal is priced in its
+      // flyer unit. Convert the flyer-unit prices back to canonical so per-meal
+      // cost stays `qty × unitPrice` untouched.
+      const base = this.basePrices[ingredientId];
+      const canonicalUnit = base?.unit ?? deal.unit;
+      const displayUnit = deal.unit;
+      const toCanonical = massConverter(displayUnit, canonicalUnit);
       return {
         ingredientId,
         label: deal.label,
-        unit: deal.unit,
+        unit: canonicalUnit,
         onSale: true,
-        unitPrice: deal.salePrice,
-        regularUnitPrice: deal.regularPrice,
+        unitPrice: toCanonical(deal.salePrice),
+        regularUnitPrice: toCanonical(deal.regularPrice),
+        displayUnit,
+        displayUnitPrice: deal.salePrice,
+        regularDisplayUnitPrice: deal.regularPrice,
         storeId: deal.storeId,
       };
     }
 
     const base = this.basePrices[ingredientId];
     if (!base) return null; // unknown price: treat as excluded rather than guess
+    // Base prices are stored in the canonical unit; if the item is advertised in
+    // a different (mass) flyer unit, surface a display price in that unit too so
+    // an off-sale meat still shows "$X.XX/lb" consistently with its deals.
+    const displayUnit = base.flyerUnit ?? base.unit;
+    const toDisplay = massConverter(base.unit, displayUnit);
     return {
       ingredientId,
       label: ingredient.name,
@@ -101,9 +164,32 @@ export class PricingResolver {
       onSale: false,
       unitPrice: base.unitPrice,
       regularUnitPrice: base.unitPrice,
+      displayUnit,
+      displayUnitPrice: toDisplay(base.unitPrice),
+      regularDisplayUnitPrice: toDisplay(base.unitPrice),
       storeId: this.nearestStoreId ?? '',
     };
   }
+}
+
+/**
+ * A price-conversion function from `from` unit to `to` unit. Identity when the
+ * units match; exact mass conversion when both are mass units; identity (the
+ * safest non-guess) otherwise — callers only pair convertible units in practice.
+ */
+function massConverter(from: string, to: string): (price: number) => number {
+  if (from === to) return (p) => p;
+  if (isMassUnit(from) && isMassUnit(to)) {
+    return (p) => convertUnitPrice(p, from, to);
+  }
+  return (p) => p;
+}
+
+/** Per-gram sale price for mass deals; raw sale price otherwise. */
+function comparableSalePrice(deal: Deal): number {
+  return isMassUnit(deal.unit)
+    ? convertUnitPrice(deal.salePrice, deal.unit, 'g')
+    : deal.salePrice;
 }
 
 /**
@@ -141,7 +227,9 @@ export function computeMealCost(
   for (const ri of recipe.ingredients) {
     const p = pricing.resolve(ri.ingredientId);
     if (!p) continue; // staple or unpriced -> excluded
-    const qty = ri.quantity * scale;
+    // Reconcile the recipe quantity into the canonical pricing unit before
+    // multiplying, so a mass mismatch converts and a real mismatch is loud.
+    const qty = reconcileQtyToPricingUnit(ri.quantity * scale, ri.unit, p.unit);
     estimated += qty * p.unitPrice;
     regular += qty * p.regularUnitPrice;
     if (p.onSale) saleIngredientIds.push(ri.ingredientId);

@@ -35,6 +35,12 @@ export interface Store {
   name: string;
   distanceKm: number;
   dealCount: number;
+  /**
+   * Landing page for this store's weekly flyer. Mock data uses the chain-level
+   * flyer URL (see CHAIN_FLYER_URLS); a real discovery agent could resolve a
+   * store-specific circulaire page.
+   */
+  flyerUrl?: string;
 }
 
 export interface Deal {
@@ -43,9 +49,21 @@ export interface Deal {
   ingredientId: string;
   label: string;
   labelFr?: string;
+  /** Sale price expressed in `unit`. */
   salePrice: number;
+  /** Regular (pre-sale) price expressed in `unit`. */
   regularPrice: number;
+  /**
+   * Pricing unit for salePrice/regularPrice — the flyer's own unit (e.g. 'lb'
+   * for meat, 'g' for fish, or a package unit). May differ from the recipe's
+   * canonical unit; the PricingResolver converts as needed.
+   */
   unit: string;
+  /**
+   * Exact flyer page the deal was parsed from. In mock data this is the chain's
+   * flyer landing page; a real agent would capture the specific circulaire page.
+   */
+  sourceUrl?: string;
   /** ISO date (YYYY-MM-DD) */
   validFrom: string;
   /** ISO date (YYYY-MM-DD) */
@@ -112,13 +130,23 @@ export interface MealPlan {
   totals: MealPlanTotals;
 }
 
+/**
+ * A consolidated shopping-list line. quantity/unit/unitPrice are all in the
+ * item's pricing/display unit (the flyer's unit — e.g. "2.5 lb × $8.99/lb"),
+ * NOT necessarily the recipe's canonical unit. Invariant:
+ *   lineTotal === round2(quantity × unitPrice)
+ */
 export interface ShoppingListItem {
   ingredientId: string;
   label: string;
+  /** Quantity to buy, in `unit` (the pricing/display unit). */
   quantity: number;
+  /** Pricing/display unit (e.g. 'lb', 'g', 'can'). */
   unit: string;
   onSale: boolean;
+  /** Effective price per `unit`. */
   unitPrice: number;
+  /** round2(quantity × unitPrice). */
   lineTotal: number;
   mealIds: string[];
   checked: boolean;

@@ -10,8 +10,10 @@ import { BASE_PRICES } from '@/data/pricing';
 import {
   PricingResolver,
   purchasableQuantity,
+  reconcileQtyToPricingUnit,
   round2,
 } from './costing';
+import { convertQty, isMassUnit } from './units';
 
 interface Accum {
   rawQty: number;
@@ -42,7 +44,13 @@ export function buildShoppingList(plan: MealPlan, ctx: PlanContext): ShoppingLis
       const priced = pricing.resolve(ri.ingredientId); // null => staple/unpriced
       if (!priced) continue;
       const entry = acc.get(ri.ingredientId) ?? { rawQty: 0, mealIds: new Set() };
-      entry.rawQty += ri.quantity * scale;
+      // Accumulate in the canonical pricing unit so quantities across meals with
+      // different authored units still add up correctly.
+      entry.rawQty += reconcileQtyToPricingUnit(
+        ri.quantity * scale,
+        ri.unit,
+        priced.unit,
+      );
       entry.mealIds.add(meal.recipeId);
       acc.set(ri.ingredientId, entry);
     }
@@ -58,17 +66,23 @@ export function buildShoppingList(plan: MealPlan, ctx: PlanContext): ShoppingLis
     const p = pricing.resolve(ingredientId);
     if (!p) continue;
     const storeId = p.storeId || ctx.stores[0]?.id || '';
-    const quantity = purchasableQuantity(entry.rawQty, p.unit);
-    const lineTotal = round2(quantity * p.unitPrice);
-    const regularLine = round2(quantity * p.regularUnitPrice);
+    // Package rounding happens in the canonical unit (discrete → ceil,
+    // continuous → 2dp), then the line is expressed in the flyer/display unit.
+    const canonicalQty = purchasableQuantity(entry.rawQty, p.unit);
+    const displayQty =
+      p.displayUnit !== p.unit && isMassUnit(p.displayUnit) && isMassUnit(p.unit)
+        ? round2(convertQty(canonicalQty, p.unit, p.displayUnit))
+        : canonicalQty;
+    const lineTotal = round2(displayQty * p.displayUnitPrice);
+    const regularLine = round2(displayQty * p.regularDisplayUnitPrice);
 
     const item: ShoppingListItem = {
       ingredientId,
       label: p.label,
-      quantity,
-      unit: p.unit,
+      quantity: displayQty,
+      unit: p.displayUnit,
       onSale: p.onSale,
-      unitPrice: p.unitPrice,
+      unitPrice: p.displayUnitPrice,
       lineTotal,
       mealIds: [...entry.mealIds],
       checked: false,
