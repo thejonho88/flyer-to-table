@@ -10,3 +10,4 @@ export * from './postal';
 export * from './recovery';
 export * from './format';
 export * from './onboardingSteps';
+export * from './flyerMerge';

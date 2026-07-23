@@ -68,6 +68,14 @@ export interface Deal {
   validFrom: string;
   /** ISO date (YYYY-MM-DD) */
   validTo: string;
+  /**
+   * Where this deal came from. Optional/additive so existing (seeded) caches
+   * remain valid without a version bump:
+   *  - 'seeded'    — from the built-in demo data (default when absent),
+   *  - 'extracted' — parsed from a user-uploaded flyer,
+   *  - 'edited'    — extracted then hand-corrected by the user.
+   */
+  provenance?: 'seeded' | 'extracted' | 'edited';
 }
 
 export interface RecipeIngredient {
@@ -208,6 +216,65 @@ export interface DiscoveryAgent {
 }
 
 /* ------------------------------------------------------------------ */
+/* Bring-your-own-flyer extraction                                    */
+/* ------------------------------------------------------------------ */
+
+/**
+ * A user-picked flyer file. `uri` is a transient handle (object URL on web) —
+ * NEVER persisted. Only `name`/metadata + the resulting Deal[] are stored.
+ */
+export interface UploadedFlyerFile {
+  name: string;
+  mimeType: string;
+  size: number;
+  uri: string;
+}
+
+export type FlyerExtractionEvent = {
+  type: 'status';
+  message: string;
+  /** 0..1 */
+  progress: number;
+};
+
+export interface FlyerExtractInput {
+  file: UploadedFlyerFile;
+  storeId: string;
+  chain: Chain;
+}
+
+export interface FlyerExtractOptions {
+  onEvent?: (e: FlyerExtractionEvent) => void;
+}
+
+/**
+ * Seam over the real (future) Claude/Supabase flyer parser. The mock never
+ * reads `file.uri`; a live implementation would. Fails LOUDLY — never resolves
+ * an empty Deal[] silently.
+ */
+export interface FlyerExtractor {
+  extract(
+    input: FlyerExtractInput,
+    opts?: FlyerExtractOptions,
+  ): Promise<Deal[]>;
+}
+
+export type FlyerExtractionFailure =
+  | 'unreadable_file'
+  | 'no_deals_found'
+  | 'error';
+
+/**
+ * Persisted overlay of user-uploaded flyer deals, keyed by FSA. Each entry
+ * REPLACES all seeded deals for its store. Stores only Deal[] + fileName
+ * metadata — never a File/Blob/object URL.
+ */
+export interface FlyerOverlay {
+  fsa: string;
+  entries: Record<string /* storeId */, { fileName: string; deals: Deal[] }>;
+}
+
+/* ------------------------------------------------------------------ */
 /* Recipe source                                                     */
 /* ------------------------------------------------------------------ */
 
@@ -251,6 +318,8 @@ export interface PersistenceAdapter {
   savePreferences(p: PlanPreferences): Promise<void>;
   getDiscoveryCache(postal: string): Promise<DiscoveryResult | null>;
   saveDiscoveryCache(r: DiscoveryResult): Promise<void>;
+  getFlyerOverlay(postal: string): Promise<FlyerOverlay | null>;
+  saveFlyerOverlay(o: FlyerOverlay): Promise<void>;
   getCurrentPlan(): Promise<MealPlan | null>;
   saveCurrentPlan(p: MealPlan): Promise<void>;
   getChecklist(planId: string): Promise<Record<string, boolean>>;

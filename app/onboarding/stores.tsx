@@ -56,7 +56,7 @@ export default function StoresScreen() {
 
   const onContinue = async () => {
     await update({ selectedStoreIds: selected });
-    router.push('/onboarding/preferences');
+    router.push('/onboarding/flyers');
   };
 
   return (

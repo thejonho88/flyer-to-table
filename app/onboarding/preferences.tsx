@@ -44,7 +44,7 @@ export default function OnboardingPreferences() {
   };
 
   return (
-    <OnboardingScaffold step={3} wide>
+    <OnboardingScaffold step={4} wide>
       <View style={styles.head}>
         <Text style={styles.heading}>Customize Your Plan</Text>
         <Text style={styles.sub}>Tell us about your household so meals fit.</Text>

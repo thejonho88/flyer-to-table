@@ -2,6 +2,14 @@
 
 Newest entries first. One entry per completed task/change set.
 
+## 2026-07-23 — "Bring Your Own Flyer" hybrid discovery (MVP upload path)
+- Product decision (brainstormed): sidestep scraping/legal entirely for the pilot — user downloads their own weekly flyer (per-store links) and uploads it (PDF/PNG/JPG); extraction behind a new swappable `FlyerExtractor` seam. Mock extractor ships now; real Claude extraction arrives via Supabase edge function later (API key can't live in a static site).
+- New onboarding step 4 of 5 "Bring Your Own Flyer": per-store download links, drag-and-drop upload slots, per-file progress + loud failures, confirm/edit panel (editable sale price clamped ≤ regular, include toggles, remove) before deals apply. Upload always optional — demo prices remain the fallback.
+- Uploaded deals REPLACE that store's seeded deals, persist via a separately-versioned overlay (`ftt:flyerOverlay:v1`), and survive reload + forced re-discovery (never silently dropped). Deal provenance tracked (seeded/extracted/edited) — doubles as labeled data for measuring real extraction quality later.
+- Verified in-browser end-to-end: drop → confirm → apply → v2 cache shows replaced deals, clamp enforced, overlay persisted without blob URIs.
+- Tests: 55 → 67. Pipeline: scoper → code-builder → reviewer (pass, zero findings).
+- Next: Supabase project + Anthropic API key → swap MockFlyerExtractor for the real Claude-backed edge function.
+
 ## 2026-07-23 — Phase 0 flyer-discovery spike (Montreal) — COMPLETE
 - Ran the Montreal data-sourcing spike (research, not code): 6 parallel research agents — one per chain plus aggregators/legal.
 - **Exit criteria MET**: all 5 target chains have structured/semi-structured weekly data (well past the 3-of-5 bar). Scores: IGA 4/5, Metro/Super C/Provigo/Maxi 3/5, Walmart 2/5.

@@ -1,6 +1,7 @@
 import type {
   DiscoveryEvent,
   DiscoveryResult,
+  FlyerOverlay,
   MealPlan,
   PersistenceAdapter,
   PlanPreferences,
@@ -35,6 +36,7 @@ import {
 class MemoryPersistence implements PersistenceAdapter {
   prefs: PlanPreferences | null = null;
   discovery = new Map<string, DiscoveryResult>();
+  overlays = new Map<string, FlyerOverlay>();
   plan: MealPlan | null = null;
   checklists = new Map<string, Record<string, boolean>>();
 
@@ -49,6 +51,12 @@ class MemoryPersistence implements PersistenceAdapter {
   }
   async saveDiscoveryCache(r: DiscoveryResult) {
     this.discovery.set(r.postalCode.slice(0, 3).toUpperCase(), r);
+  }
+  async getFlyerOverlay(postal: string) {
+    return this.overlays.get(postal.slice(0, 3).toUpperCase()) ?? null;
+  }
+  async saveFlyerOverlay(o: FlyerOverlay) {
+    this.overlays.set(o.fsa.toUpperCase(), o);
   }
   async getCurrentPlan() {
     return this.plan;
@@ -315,31 +323,36 @@ describe('onboarding step reachability', () => {
     const input = { result: null, prefs: prefs('H2X 1Y4', []) };
     expect(isStepReachable(2, input)).toBe(false);
     expect(isStepReachable(3, input)).toBe(false);
+    expect(isStepReachable(4, input)).toBe(false);
   });
 
   it('result for another FSA does not unlock stores', () => {
     const input = { result: result('H3B 1A1'), prefs: prefs('H2X 1Y4', ['metro-h2x']) };
     expect(isStepReachable(2, input)).toBe(false);
     expect(isStepReachable(3, input)).toBe(false);
+    expect(isStepReachable(4, input)).toBe(false);
   });
 
-  it('matching result but no persisted stores: stores reachable, prefs not', () => {
+  it('matching result but no persisted stores: stores reachable, flyers/prefs not', () => {
     const input = { result: result('H2X 1Y4'), prefs: prefs('H2X 1Y4', []) };
     expect(isStepReachable(2, input)).toBe(true);
     expect(isStepReachable(3, input)).toBe(false);
+    expect(isStepReachable(4, input)).toBe(false);
   });
 
-  it('all present: stores and prefs reachable', () => {
+  it('all present: stores, flyers, and prefs reachable', () => {
     const input = { result: result('H2X 1Y4'), prefs: prefs('H2X 1Y4', ['metro-h2x']) };
     expect(isStepReachable(2, input)).toBe(true);
     expect(isStepReachable(3, input)).toBe(true);
+    expect(isStepReachable(4, input)).toBe(true);
   });
 
   it('arrows skip discovery: back from stores lands on postal', () => {
     const input = { result: result('H2X 1Y4'), prefs: prefs('H2X 1Y4', ['metro-h2x']) };
     expect(prevReachableStep(2, input)).toBe(0);
     expect(nextReachableStep(2, input)).toBe(3);
-    expect(nextReachableStep(3, input)).toBeNull();
+    expect(nextReachableStep(3, input)).toBe(4);
+    expect(nextReachableStep(4, input)).toBeNull();
     expect(prevReachableStep(0, input)).toBeNull();
   });
 });

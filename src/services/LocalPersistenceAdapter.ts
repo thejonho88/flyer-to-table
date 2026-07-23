@@ -1,5 +1,6 @@
 import type {
   DiscoveryResult,
+  FlyerOverlay,
   MealPlan,
   PersistenceAdapter,
   PlanPreferences,
@@ -15,10 +16,19 @@ import { kv } from './storage';
  */
 const DISCOVERY_CACHE_VERSION = 'v2';
 
+/**
+ * Flyer-overlay schema version. Kept separate from (and independent of) the
+ * discovery-cache version: uploads are additive and must not force a cache
+ * rebuild, and the overlay shape can evolve on its own cadence.
+ */
+const FLYER_OVERLAY_VERSION = 'v1';
+
 const KEYS = {
   preferences: 'ftt:preferences',
   plan: 'ftt:plan:current',
   discovery: (fsa: string) => `ftt:discovery:${DISCOVERY_CACHE_VERSION}:${fsa}`,
+  flyerOverlay: (fsa: string) =>
+    `ftt:flyerOverlay:${FLYER_OVERLAY_VERSION}:${fsa}`,
   checklist: (planId: string) => `ftt:checklist:${planId}`,
 };
 
@@ -43,6 +53,16 @@ export class LocalPersistenceAdapter implements PersistenceAdapter {
 
   saveDiscoveryCache(r: DiscoveryResult): Promise<void> {
     return kv.setJSON(KEYS.discovery(fsaOf(r.postalCode)), r);
+  }
+
+  getFlyerOverlay(postal: string): Promise<FlyerOverlay | null> {
+    return kv.getJSON<FlyerOverlay>(KEYS.flyerOverlay(fsaOf(postal)));
+  }
+
+  saveFlyerOverlay(o: FlyerOverlay): Promise<void> {
+    // Only Deal[] + fileName metadata are ever written here — never a
+    // File/Blob/object URL (those live on the transient UploadedFlyerFile.uri).
+    return kv.setJSON(KEYS.flyerOverlay(o.fsa), o);
   }
 
   getCurrentPlan(): Promise<MealPlan | null> {

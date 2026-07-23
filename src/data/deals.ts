@@ -426,6 +426,25 @@ function buildDealsForStore(
   return deals;
 }
 
+/**
+ * Build a set of "extracted" deals for a store, as the mock flyer extractor
+ * would return them. Reuses buildDealsForStore so uploaded-flyer deals share
+ * the exact same BASE_PRICES unit conversion (per-lb meats), CAD prices, French
+ * labels, deterministic ids (`${storeId}__${ingredientId}`), and flyer window as
+ * seeded/added deals — so they slot straight into the planner. Provenance is
+ * stamped 'extracted' so the UI and merge logic can tell them apart from seeds.
+ *
+ * The chain's CHAIN_DEAL_SEEDS drive which items are "on sale" in the uploaded
+ * flyer; a real extractor would read them from the file instead.
+ */
+export function makeExtractedDeals(storeId: string, chain: Chain): Deal[] {
+  const sales = CHAIN_DEAL_SEEDS[chain] ?? [];
+  return buildDealsForStore(storeId, sales, chain).map((d) => ({
+    ...d,
+    provenance: 'extracted' as const,
+  }));
+}
+
 interface AreaData {
   stores: Store[];
   deals: Deal[];

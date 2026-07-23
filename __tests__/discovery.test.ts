@@ -1,6 +1,7 @@
 import type {
   DiscoveryEvent,
   DiscoveryResult,
+  FlyerOverlay,
   MealPlan,
   PersistenceAdapter,
   PlanPreferences,
@@ -10,6 +11,7 @@ import { MockDiscoveryAgent, DiscoveryError } from '@/services/MockDiscoveryAgen
 class MemoryPersistence implements PersistenceAdapter {
   prefs: PlanPreferences | null = null;
   discovery = new Map<string, DiscoveryResult>();
+  overlays = new Map<string, FlyerOverlay>();
   plan: MealPlan | null = null;
   checklists = new Map<string, Record<string, boolean>>();
 
@@ -24,6 +26,12 @@ class MemoryPersistence implements PersistenceAdapter {
   }
   async saveDiscoveryCache(r: DiscoveryResult) {
     this.discovery.set(r.postalCode.slice(0, 3).toUpperCase(), r);
+  }
+  async getFlyerOverlay(postal: string) {
+    return this.overlays.get(postal.slice(0, 3).toUpperCase()) ?? null;
+  }
+  async saveFlyerOverlay(o: FlyerOverlay) {
+    this.overlays.set(o.fsa.toUpperCase(), o);
   }
   async getCurrentPlan() {
     return this.plan;

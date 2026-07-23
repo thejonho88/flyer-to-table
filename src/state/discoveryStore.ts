@@ -1,9 +1,11 @@
 import { create } from 'zustand';
 import type {
   Chain,
+  Deal,
   DiscoveryEvent,
   DiscoveryPhase,
   DiscoveryResult,
+  FlyerOverlay,
   Store,
 } from '@/domain/types';
 import { fsaOf } from '@/domain/postal';
@@ -12,10 +14,43 @@ import {
   makeAddedStore,
   mergeAddedStores,
 } from '@/data/deals';
+import {
+  applyExtractedDeals,
+  applyOverlay,
+  removeDealFromResult,
+  updateDealInResult,
+  type DealPatch,
+} from '@/domain/flyerMerge';
 import { discoveryAgent } from '@/services/MockDiscoveryAgent';
 import { DiscoveryError } from '@/services/MockDiscoveryAgent';
 import { persistence } from '@/services/LocalPersistenceAdapter';
 import { usePreferencesStore } from './preferencesStore';
+
+/**
+ * Rebuild the persisted overlay entry for `storeId` from the current result so
+ * edits/removes stay in sync with what will be re-applied after a
+ * re-discovery. When `fileName` is omitted we only touch an entry that already
+ * exists (a pure edit on a non-overlaid, seeded store must not fabricate one).
+ */
+async function syncOverlayEntry(
+  result: DiscoveryResult,
+  storeId: string,
+  fileName?: string,
+): Promise<void> {
+  const overlay: FlyerOverlay =
+    (await persistence.getFlyerOverlay(result.postalCode)) ?? {
+      fsa: fsaOf(result.postalCode),
+      entries: {},
+    };
+  const existing = overlay.entries[storeId];
+  if (!existing && fileName == null) return;
+  const deals = result.deals.filter((d) => d.storeId === storeId);
+  overlay.entries[storeId] = {
+    fileName: fileName ?? existing?.fileName ?? '',
+    deals,
+  };
+  await persistence.saveFlyerOverlay(overlay);
+}
 
 type DiscoveryStatus = 'idle' | 'running' | 'success' | 'failed';
 
@@ -37,6 +72,16 @@ interface DiscoveryState {
   ) => Promise<DiscoveryResult | null>;
   /** Append a user-added store (and its deals) to the current result. */
   addStore: (chain: Chain) => Promise<void>;
+  /** Replace a store's deals with those extracted from an uploaded flyer. */
+  applyExtraction: (
+    storeId: string,
+    fileName: string,
+    deals: Deal[],
+  ) => Promise<void>;
+  /** Hand-correct a single confirmed deal (clamps salePrice ≤ regularPrice). */
+  editDeal: (dealId: string, patch: DealPatch) => Promise<void>;
+  /** Permanently drop a single confirmed deal. */
+  removeDeal: (dealId: string) => Promise<void>;
   reset: () => void;
 }
 
@@ -49,12 +94,17 @@ export const useDiscoveryStore = create<DiscoveryState>((set, get) => ({
   hydrateFor: async (postalCode) => {
     const cached = await discoveryAgent.getCached(postalCode);
     if (cached) {
+      // The cache already includes any overlay (we persist post-apply), but
+      // re-apply defensively so an upload is NEVER silently dropped on rehydrate.
+      const overlay = await persistence.getFlyerOverlay(postalCode);
+      const result = overlay ? applyOverlay(cached, overlay) : cached;
       set({
         status: 'success',
-        result: cached,
-        foundStores: cached.stores,
+        result,
+        foundStores: result.stores,
         progress: 1,
       });
+      return result;
     }
     return cached;
   },
@@ -110,6 +160,18 @@ export const useDiscoveryStore = create<DiscoveryState>((set, get) => ({
         forceRefresh: opts?.forceRefresh,
         onEvent,
       });
+      // A forced live re-discovery / cache expiry rebuilds deals from seeds. The
+      // 'complete' handler above already re-merged added stores; now re-apply the
+      // flyer overlay on top so user uploads are NEVER silently dropped.
+      const current = get().result;
+      if (current && get().status === 'success') {
+        const overlay = await persistence.getFlyerOverlay(current.postalCode);
+        if (overlay && Object.keys(overlay.entries).length > 0) {
+          const withOverlay = applyOverlay(current, overlay);
+          set({ result: withOverlay, foundStores: withOverlay.stores });
+          await persistence.saveDiscoveryCache(withOverlay);
+        }
+      }
       return result;
     } catch (err) {
       if (err instanceof DiscoveryError) {
@@ -143,6 +205,38 @@ export const useDiscoveryStore = create<DiscoveryState>((set, get) => ({
     };
     set({ result: updated, foundStores: updated.stores });
     await persistence.saveDiscoveryCache(updated);
+  },
+
+  applyExtraction: async (storeId, fileName, deals) => {
+    const result = get().result;
+    if (!result) return;
+    const updated = applyExtractedDeals(result, storeId, deals);
+    set({ result: updated, foundStores: updated.stores });
+    await persistence.saveDiscoveryCache(updated);
+    // Persist the overlay so this upload survives forced re-discovery / expiry.
+    await syncOverlayEntry(updated, storeId, fileName);
+  },
+
+  editDeal: async (dealId, patch) => {
+    const result = get().result;
+    if (!result) return;
+    const updated = updateDealInResult(result, dealId, patch);
+    if (updated === result) return;
+    set({ result: updated, foundStores: updated.stores });
+    await persistence.saveDiscoveryCache(updated);
+    const deal = updated.deals.find((d) => d.id === dealId);
+    if (deal) await syncOverlayEntry(updated, deal.storeId);
+  },
+
+  removeDeal: async (dealId) => {
+    const result = get().result;
+    if (!result) return;
+    const storeId = result.deals.find((d) => d.id === dealId)?.storeId;
+    const updated = removeDealFromResult(result, dealId);
+    if (updated === result) return;
+    set({ result: updated, foundStores: updated.stores });
+    await persistence.saveDiscoveryCache(updated);
+    if (storeId) await syncOverlayEntry(updated, storeId);
   },
 
   reset: () =>
