@@ -2,6 +2,10 @@
 
 Newest entries first. One entry per completed task/change set.
 
+## 2026-07-23 — Supabase provisioned (setup)
+- Project "Flyer 2 Table" created (ref dnkzhrladfjuyvwnhxrb); ANTHROPIC_API_KEY set as an Edge Function secret (dashboard-verified); Supabase MCP added to project config and OAuth-authenticated; official Supabase agent skills installed.
+- Everything is staged for Phase 0.5 (real Claude-backed FlyerExtractor) — build starts in the next session, where the MCP tools load.
+
 ## 2026-07-23 — "Bring Your Own Flyer" hybrid discovery (MVP upload path)
 - Product decision (brainstormed): sidestep scraping/legal entirely for the pilot — user downloads their own weekly flyer (per-store links) and uploads it (PDF/PNG/JPG); extraction behind a new swappable `FlyerExtractor` seam. Mock extractor ships now; real Claude extraction arrives via Supabase edge function later (API key can't live in a static site).
 - New onboarding step 4 of 5 "Bring Your Own Flyer": per-store download links, drag-and-drop upload slots, per-file progress + loud failures, confirm/edit panel (editable sale price clamped ≤ regular, include toggles, remove) before deals apply. Upload always optional — demo prices remain the fallback.
@@ -50,10 +54,6 @@ Newest entries first. One entry per completed task/change set.
 - All external dependencies behind swappable interfaces (DiscoveryAgent, RecipeSource, PersistenceAdapter) — Supabase and the real discovery agent slot in later without touching the planner/UI.
 - 29 seeded recipes (guaranteed coverage for strictest constraint combos), 5 seeded Montreal chains, CAD mock pricing.
 - 18 unit tests; pipeline: scoper → code-builder → reviewer (passed).
-
-## 2026-07-23 — Supabase provisioned (setup)
-- Project "Flyer 2 Table" created (ref dnkzhrladfjuyvwnhxrb); ANTHROPIC_API_KEY set as an Edge Function secret (dashboard-verified); Supabase MCP added to project config and OAuth-authenticated; official Supabase agent skills installed.
-- Everything is staged for Phase 0.5 (real Claude-backed FlyerExtractor) — build starts in the next session, where the MCP tools load.
 
 ## Backlog / not done
 - **Phase 0 flyer-discovery spike: DONE (2026-07-23)** — decision is Flipp-first hybrid; see the dated entry above and `Reference Files/phase0-flyer-discovery-findings.md`.
