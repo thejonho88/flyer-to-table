@@ -51,6 +51,10 @@ Newest entries first. One entry per completed task/change set.
 - 29 seeded recipes (guaranteed coverage for strictest constraint combos), 5 seeded Montreal chains, CAD mock pricing.
 - 18 unit tests; pipeline: scoper → code-builder → reviewer (passed).
 
+## 2026-07-23 — Supabase provisioned (setup)
+- Project "Flyer 2 Table" created (ref dnkzhrladfjuyvwnhxrb); ANTHROPIC_API_KEY set as an Edge Function secret (dashboard-verified); Supabase MCP added to project config and OAuth-authenticated; official Supabase agent skills installed.
+- Everything is staged for Phase 0.5 (real Claude-backed FlyerExtractor) — build starts in the next session, where the MCP tools load.
+
 ## Backlog / not done
 - **Phase 0 flyer-discovery spike: DONE (2026-07-23)** — decision is Flipp-first hybrid; see the dated entry above and `Reference Files/phase0-flyer-discovery-findings.md`.
 - **Phase 0.5 — real DiscoveryAgent: NOT started** — wire Flipp/Apify fetch + Claude extraction behind the existing DiscoveryAgent interface; Supabase Postgres for shared deal cache + accumulating French label→ingredient dictionary. This is what puts real Montreal prices in front of the pilot user. All flyer data is still mocked until this ships.
