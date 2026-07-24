@@ -2,6 +2,13 @@
 
 Newest entries first. One entry per completed task/change set.
 
+## 2026-07-23 — Bug fix: real flyer PDFs rejected by 10 MB cap
+- Reported: uploads of real circulaires (Maxi 12.1 MB, IGA 10.7 MB, Super C 13.4 MB) failed with the misleading "Couldn't read this file" error.
+- Root cause: 10 MB size cap on both client (MAX_FILE_BYTES) and edge function (MAX_BASE64_CHARS), calibrated to demo files — and the size rejection reused the 'unreadable_file' reason, so the UI blamed the file type.
+- Fix: cap raised to 20 MB decoded on both sides (base64 ≈ 27 MB, safely under Anthropic's 32 MB request limit); new 'file_too_large' failure reason with honest copy; FlyerExtractionFailure union now runtime-enumerable with an exhaustiveness test on the copy map; MockFlyerExtractor given identical semantics.
+- Verified end-to-end with the real 13.4 MB Super C circulaire against deployed extract-flyer v4: HTTP 200 in 119 s, 25 correct deals (chicken legs $1.95/lb, corn 50¢/unit, Exceldor chicken $8.99/lb — all match the printed flyer). Known risk noted: 119 s is close to the free-plan 150 s wall clock; larger flyers may need pagination later.
+- Tests: 148 → 154. Pipeline: diagnosis → code-builder → reviewer (pass). Edge function v4 deployed via MCP.
+
 ## 2026-07-23 — Real DiscoveryAgent: live Montreal prices, no upload needed (Phase 0.5 COMPLETE)
 - Requested: "Complete Phase 0.5" (plus a memory-rule change: devlog after every prompt).
 - Data source pivot, validated by spike before building: Flipp's consumer backend (backflipp.wishabi.com) is directly reachable from BOTH local and the Supabase edge runtime — all 6 target chains carry current-week H4A circulaires with item-level prices. Pilot goes direct (browser UA, polite volume); the Apify managed scraper from the Phase 0 decision stays as the documented fallback seam. No Apify account needed.

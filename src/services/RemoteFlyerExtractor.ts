@@ -16,12 +16,19 @@ const VALID_MIME_TYPES = new Set([
 
 const KNOWN_REASONS = new Set<FlyerExtractionFailure>([
   'unreadable_file',
+  'file_too_large',
   'no_deals_found',
   'error',
 ]);
 
-/** Matches the edge function's decoded-size cap; fail fast before encoding. */
-const MAX_FILE_BYTES = 10_000_000;
+/**
+ * Decoded-size ceiling; fail fast before encoding. base64 of 20 MB ≈ 27 MB,
+ * which must stay under Anthropic's 32 MB request limit. Real Montreal
+ * circulaires run 10–15 MB, so 10 MB was too low. The edge function mirrors
+ * this as MAX_BASE64_CHARS = ceil(20 MB × 4/3); keep the two consistent (the
+ * client cap may be slightly stricter than the server's).
+ */
+export const MAX_FILE_BYTES = 20_000_000;
 
 /** Server-side Claude extraction can take a while; give it a generous ceiling. */
 const REQUEST_TIMEOUT_MS = 180_000;
@@ -77,7 +84,7 @@ export class RemoteFlyerExtractor implements FlyerExtractor {
     // Oversized files would hang base64 encoding and be rejected server-side
     // anyway (413) — reject up front with the specific reason instead.
     if (file.size > MAX_FILE_BYTES) {
-      throw new FlyerExtractionError('unreadable_file', file.name);
+      throw new FlyerExtractionError('file_too_large', file.name);
     }
 
     emit({ type: 'status', message: 'Reading flyer…', progress: 0.1 });

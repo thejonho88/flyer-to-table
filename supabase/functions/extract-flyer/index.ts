@@ -17,8 +17,11 @@ const CORS_HEADERS: Record<string, string> = {
 
 const ALLOWED_MIME = new Set(['application/pdf', 'image/png', 'image/jpeg']);
 
-// ~10 MB decoded ≈ 14M base64 chars. Reject larger up front (413).
-const MAX_BASE64_CHARS = 14_000_000;
+// Decoded-size ceiling = ceil(20 MB × 4/3) base64 chars. base64 of 20 MB ≈
+// 27 MB, which must stay under Anthropic's 32 MB request limit. Real Montreal
+// circulaires run 10–15 MB, so the old 10 MB cap was too low. Mirrors the
+// client's MAX_FILE_BYTES (20 MB); the client cap may be slightly stricter.
+const MAX_BASE64_CHARS = 27_000_000;
 
 /** JSON response with CORS headers on EVERY response, including errors. */
 function json(status: number, body: unknown): Response {
@@ -124,7 +127,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     }
     // Too large -> 413.
     if (fileBase64.length > MAX_BASE64_CHARS) {
-      return json(413, { error: 'unreadable_file' });
+      return json(413, { error: 'file_too_large' });
     }
 
     const apiKey = Deno.env.get('ANTHROPIC_API_KEY');

@@ -153,6 +153,16 @@ describe('MockFlyerExtractor', () => {
       }),
     ).rejects.toMatchObject({ reason: 'unreadable_file' });
   });
+
+  it('fails LOUDLY with file_too_large for a file over 20MB', async () => {
+    await expect(
+      extractor().extract({
+        file: { ...file('application/pdf'), size: 20_000_001 },
+        storeId: 'metro-h2x',
+        chain: 'metro',
+      }),
+    ).rejects.toMatchObject({ reason: 'file_too_large' });
+  });
 });
 
 /* ------------------------------- merge ---------------------------------- */

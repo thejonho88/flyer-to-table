@@ -30,6 +30,7 @@ import { revokeUploadedFile } from '@/services/filePick';
 import { CHAIN_FLYER_URLS } from '@/data/flyerUrls';
 import { openExternalUrl } from '@/services/links';
 import { formatMoney } from '@/domain/money';
+import { FAILURE_COPY } from '@/domain/flyerFailureCopy';
 
 export default function FlyersScreen() {
   const router = useRouter();
@@ -94,13 +95,7 @@ type Slot =
   | { phase: 'confirm'; fileName: string; rows: EditableRow[] }
   | { phase: 'applied'; fileName: string; count: number };
 
-const FAILURE_COPY: Record<FlyerExtractionFailure, string> = {
-  unreadable_file: "Couldn't read this file. Upload a PDF, PNG, or JPG.",
-  no_deals_found: 'No deals found in this flyer. Try a clearer copy.',
-  error: 'Something went wrong reading this flyer. Please try again.',
-};
-
-function StoreFlyerCard({ store }: { store: Store }) {
+export function StoreFlyerCard({ store }: { store: Store }) {
   const applyExtraction = useDiscoveryStore((s) => s.applyExtraction);
   const [slot, setSlot] = useState<Slot>({ phase: 'idle' });
 

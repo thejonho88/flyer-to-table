@@ -261,10 +261,19 @@ export interface FlyerExtractor {
   ): Promise<Deal[]>;
 }
 
-export type FlyerExtractionFailure =
-  | 'unreadable_file'
-  | 'no_deals_found'
-  | 'error';
+/**
+ * Single source of truth for flyer-extraction failure reasons. Kept as a
+ * runtime array so UI copy maps can be checked for exhaustiveness in tests
+ * (the union type below is derived from it).
+ */
+export const FLYER_EXTRACTION_FAILURES = [
+  'unreadable_file',
+  'file_too_large',
+  'no_deals_found',
+  'error',
+] as const;
+
+export type FlyerExtractionFailure = (typeof FLYER_EXTRACTION_FAILURES)[number];
 
 /**
  * Persisted overlay of user-uploaded flyer deals, keyed by FSA. Each entry

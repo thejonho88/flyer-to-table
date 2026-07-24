@@ -145,16 +145,38 @@ describe('RemoteFlyerExtractor', () => {
     expect(calls).toHaveLength(0);
   });
 
-  it('rejects an oversized file (>10MB) BEFORE any network call', async () => {
+  it('rejects an oversized file (>20MB) with file_too_large BEFORE any network call', async () => {
     const { extractor, calls } = makeExtractor({
       status: 200,
       body: { deals: [SAMPLE_DEAL] },
     });
-    const big = { ...pdf(), size: 10_000_001 };
+    const big = { ...pdf(), size: 20_000_001 };
     await expect(
       extractor.extract({ ...INPUT, file: big }),
-    ).rejects.toMatchObject({ reason: 'unreadable_file' });
+    ).rejects.toMatchObject({ reason: 'file_too_large' });
     expect(calls).toHaveLength(0);
+  });
+
+  it('lets a 12MB file through client validation to the network call', async () => {
+    const { extractor, calls } = makeExtractor({
+      status: 200,
+      body: { deals: [SAMPLE_DEAL] },
+    });
+    const big = { ...pdf(), size: 12_000_000 };
+    const deals = await extractor.extract({ ...INPUT, file: big });
+    expect(deals).toEqual([SAMPLE_DEAL]);
+    // It reached the network (blob read + POST), i.e. no early size rejection.
+    expect(calls.some((u) => u.includes(FN_PATH))).toBe(true);
+  });
+
+  it('maps HTTP 413 {error:"file_too_large"} to that reason', async () => {
+    const { extractor } = makeExtractor({
+      status: 413,
+      body: { error: 'file_too_large' },
+    });
+    await expect(extractor.extract(INPUT)).rejects.toMatchObject({
+      reason: 'file_too_large',
+    });
   });
 
   it('never resolves an empty Deal[] (empty -> no_deals_found)', async () => {

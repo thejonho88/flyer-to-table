@@ -7,6 +7,7 @@ import type {
 } from '@/domain/types';
 import { makeExtractedDeals } from '@/data/deals';
 import { FlyerExtractionError } from './flyerExtractionError';
+import { MAX_FILE_BYTES } from './RemoteFlyerExtractor';
 
 // Re-exported for backward compatibility: FlyerExtractionError now lives in its
 // own module (see ./flyerExtractionError) to avoid circular imports.
@@ -54,6 +55,10 @@ export class MockFlyerExtractor implements FlyerExtractor {
     // Loud, immediate failure for a file we can't parse — before any progress.
     if (!VALID_MIME_TYPES.has(file.mimeType)) {
       throw new FlyerExtractionError('unreadable_file', file.name);
+    }
+    // Mirror the remote extractor's cap so mock and live behave alike.
+    if (file.size > MAX_FILE_BYTES) {
+      throw new FlyerExtractionError('file_too_large', file.name);
     }
 
     emit({ type: 'status', message: 'Reading flyer…', progress: 0.2 });
