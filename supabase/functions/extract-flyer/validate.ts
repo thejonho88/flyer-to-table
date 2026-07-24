@@ -38,6 +38,13 @@ const UNIT_BY_LOWER: Record<string, string> = Object.fromEntries(
   KNOWN_UNITS.map((u) => [u.toLowerCase(), u]),
 );
 
+/**
+ * Mass pricing units. The client PricingResolver only converts WITHIN this set;
+ * a mass<->non-mass mismatch passes the price through raw (e.g. $4.77/skewer
+ * silently priced as $4.77/gram). Mirrors discover-deals/mapDeals.ts MASS_UNITS.
+ */
+const MASS_UNITS = new Set(['g', 'kg', 'lb']);
+
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 export interface ValidationContext {
@@ -124,12 +131,18 @@ function roundPrice(n: number): number {
   return Math.round(n * 10_000) / 10_000;
 }
 
-function sanitizeUnit(raw: unknown, fallback: string): string {
+/**
+ * Resolve a raw unit token to its canonical form from the known vocabulary, or
+ * null when it is not a recognized unit. Unlike a fallback-to-defaultUnit, this
+ * preserves the UNKNOWN state so the unit-correctness gate can reason about it
+ * (an unknown unit must NOT be silently reinterpreted as the canonical unit).
+ */
+function recognizeUnit(raw: unknown): string | null {
   if (typeof raw === 'string') {
     const canonical = UNIT_BY_LOWER[raw.trim().toLowerCase()];
     if (canonical) return canonical;
   }
-  return fallback;
+  return null;
 }
 
 /**
@@ -181,15 +194,46 @@ export function validateDeals(
 
     let regularRaw = toFiniteNumber(raw.regularPrice);
 
-    // Per-100g -> per-gram conversion (deterministic; never trust model math).
-    // Convert BEFORE the fallback/clamp logic so it operates on real per-gram
-    // values, then force the unit to grams.
-    let unitOverride: string | null = null;
+    // Resolve the effective pricing unit deterministically. Three outcomes for
+    // the flyer unit:
+    //   - per-100 g  -> 'g' (mass); sale/regular are divided by 100 here so the
+    //     later logic operates on real per-gram values (never trust model math)
+    //   - a recognized vocabulary unit -> its canonical form
+    //   - UNKNOWN -> the model emitted a non-vocabulary token (e.g. "each",
+    //     "brochette", "300g"); we have no trustworthy unit for it.
+    const def = entry.defaultUnit;
+    let unit: string;
     if (isPer100g(raw.unit)) {
       salePriceRaw = salePriceRaw / 100;
       if (regularRaw !== null) regularRaw = regularRaw / 100;
-      unitOverride = 'g';
+      unit = 'g';
+    } else {
+      const known = recognizeUnit(raw.unit); // canonical unit, or null (UNKNOWN)
+      if (known === null) {
+        // UNKNOWN unit: fall back to defaultUnit ONLY when the canonical unit is
+        // itself non-mass. A mass canonical (g/kg/lb) paired with an
+        // unrecognized flyer unit is DROPPED — never passed through as mass.
+        // This is the invariant that would have stopped the Maxi "raw shrimp
+        // skewers 300 g @ $4.77 each" incident: the model emitted "each" for
+        // shrimp (canonical 'g'); the old sanitizeUnit fallback stamped $4.77/g
+        // -> "$477.00/100 g" -> a $2,385 shopping-list line for shrimp.
+        if (MASS_UNITS.has(def)) continue;
+        unit = def;
+      } else {
+        unit = known;
+      }
     }
+
+    // Unit-correctness gate (cost-correctness > deal count) — mirrors
+    // discover-deals/mapDeals.ts (~L285-296) EXACTLY. Only keep deals the
+    // planner can price: accept when the deal unit exactly matches the canonical
+    // unit, OR both sides are mass units (the resolver converts within mass);
+    // otherwise DROP. Defense in depth — the resolution above already excludes
+    // the dangerous unknown-unit-on-mass-canonical case, so this fallback path
+    // is unreachable for it, but the gate is kept as the explicit invariant.
+    const unitOk =
+      unit === def || (MASS_UNITS.has(unit) && MASS_UNITS.has(def));
+    if (!unitOk) continue;
 
     // Regular price: use it when finite & positive, otherwise fall back to the
     // sale price so we never invent savings.
@@ -199,8 +243,6 @@ export function validateDeals(
     // Clamp: a sale price can never exceed the regular price.
     const salePrice = Math.min(salePriceRaw, regularPrice);
     if (salePrice > regularPrice) regularPrice = salePrice; // defensive
-
-    const unit = unitOverride ?? sanitizeUnit(raw.unit, entry.defaultUnit);
 
     const validFrom = isValidISODate(raw.validFrom) ? raw.validFrom : monday;
     const validTo = isValidISODate(raw.validTo) ? raw.validTo : sunday;

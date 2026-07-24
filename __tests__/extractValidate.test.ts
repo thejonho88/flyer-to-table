@@ -88,10 +88,12 @@ describe('validateDeals', () => {
 
   it('sanitizes unknown units to the ingredient defaultUnit and normalizes casing', () => {
     const [bad] = ok([
-      { ingredientId: 'chicken_breast', salePrice: 7.99, unit: 'squishmallows' },
+      { ingredientId: 'tofu', salePrice: 7.99, unit: 'squishmallows' },
     ]);
-    // chicken_breast defaultUnit is 'kg'
-    expect(bad.unit).toBe('kg');
+    // tofu defaultUnit is 'pack' (non-mass): an unknown unit on a non-mass
+    // canonical falls back to defaultUnit (see the unit-correctness gate).
+    // (A mass canonical would instead be dropped — see the shrimp-skewer tests.)
+    expect(bad.unit).toBe('pack');
 
     const [cased] = ok([
       { ingredientId: 'chicken_breast', salePrice: 7.99, unit: 'LB' },
@@ -188,5 +190,55 @@ describe('validateDeals', () => {
     expect(validateDeals([], CTX).ok).toBe(false);
     expect(validateDeals(undefined, CTX).ok).toBe(false);
     expect(validateDeals(null, CTX).ok).toBe(false);
+  });
+
+  // --- Unit-correctness gate (Maxi "raw shrimp skewers 300 g @ $4.77 each") ---
+  // Regression: a per-skewer price attached to a per-gram canonical unit
+  // produced $4.77/g -> "$477.00/100 g" -> a $2,385 shopping-list line.
+
+  it('drops a non-mass unit on a mass canonical (shrimp @ "each" and variants)', () => {
+    for (const unit of ['each', 'unit', '300g', 'brochette']) {
+      const result = validateDeals(
+        [{ ingredientId: 'shrimp', salePrice: 4.77, unit }],
+        CTX,
+      );
+      expect(result).toEqual({ ok: false, reason: 'no_deals_found' });
+    }
+  });
+
+  it('keeps shrimp priced per 100 g, converting to per-gram', () => {
+    const [d] = ok([
+      { ingredientId: 'shrimp', salePrice: 4.77, unit: '100g' },
+    ]);
+    expect(d.unit).toBe('g');
+    expect(d.salePrice).toBeCloseTo(0.0477, 6);
+  });
+
+  it('keeps a mass<->mass mismatch: beef (canonical kg) priced per lb', () => {
+    const [d] = ok([
+      { ingredientId: 'beef_strips', salePrice: 8.99, unit: 'lb' },
+    ]);
+    expect(d.unit).toBe('lb');
+    expect(d.salePrice).toBe(8.99);
+  });
+
+  it('keeps a non-mass canonical with an unknown unit (chickpeas -> defaultUnit "can")', () => {
+    const [each] = ok([
+      { ingredientId: 'chickpeas', salePrice: 1.29, unit: 'each' },
+    ]);
+    expect(each.unit).toBe('can');
+
+    const [unknown] = ok([
+      { ingredientId: 'chickpeas', salePrice: 1.29, unit: 'boîte' },
+    ]);
+    expect(unknown.unit).toBe('can');
+  });
+
+  it('drops a mass price on a non-mass canonical (tomato canonical "unit" priced per lb)', () => {
+    const result = validateDeals(
+      [{ ingredientId: 'tomato', salePrice: 2.49, unit: 'lb' }],
+      CTX,
+    );
+    expect(result).toEqual({ ok: false, reason: 'no_deals_found' });
   });
 });

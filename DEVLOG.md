@@ -2,6 +2,13 @@
 
 Newest entries first. One entry per completed task/change set.
 
+## 2026-07-23 — Bug fix: $2,385 shrimp (unit-mismatch pricing in extract-flyer)
+- Reported: real Maxi upload showed "Raw shrimp skewers 300g — 500 g × $477.00/100 g = $2,385.00". Flyer price was $4.77 PER SKEWER; the validator's unknown-unit fallback stamped it onto shrimp's canonical per-GRAM unit.
+- Fix: ported discover-deals' unit-correctness gate into extract-flyer/validate.ts — keep a deal only when its unit exactly matches the ingredient's canonical unit OR both are mass units; unknown units never fall back to a mass canonical. Cost-correctness beats deal count: package-priced items mapped to mass-canonical ingredients are dropped, not guessed.
+- Re-verified with the same real Maxi PDF against deployed v5: 15 clean deals (chicken thighs $1.99/lb, avocados 97¢), shrimp correctly dropped, zero absurd per-gram prices.
+- Note for users with the bad extraction persisted: re-upload the flyer to replace the store's overlay deals.
+- Tests: 154 → 159 (exact-repro cases incl. "brochette"/"each"/"300g" variants). Pipeline: code-builder → reviewer (pass). Edge function v5 deployed.
+
 ## 2026-07-23 — Bug fix: real flyer PDFs rejected by 10 MB cap
 - Reported: uploads of real circulaires (Maxi 12.1 MB, IGA 10.7 MB, Super C 13.4 MB) failed with the misleading "Couldn't read this file" error.
 - Root cause: 10 MB size cap on both client (MAX_FILE_BYTES) and edge function (MAX_BASE64_CHARS), calibrated to demo files — and the size rejection reused the 'unreadable_file' reason, so the UI blamed the file type.
