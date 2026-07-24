@@ -78,6 +78,15 @@ export interface Deal {
    *                   like 'seeded' for any "from your flyer" UI affordances).
    */
   provenance?: 'seeded' | 'extracted' | 'edited' | 'discovered';
+  /**
+   * Price-plausibility flag (see domain/priceBand.ts). Set when the sale price
+   * fell in the 'suspicious' band — believable enough to keep, unusual enough to
+   * warn about. Optional/additive so existing (seeded) caches remain valid with
+   * no version bump; absent means "not flagged". Discovery drops suspicious
+   * deals entirely, so in practice this only rides on user-facing extracted
+   * deals awaiting confirmation.
+   */
+  suspicious?: boolean;
 }
 
 export interface RecipeIngredient {

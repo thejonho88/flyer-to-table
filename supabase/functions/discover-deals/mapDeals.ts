@@ -11,6 +11,7 @@
  * Jest resolves the exact file path fine.
  */
 import { getCatalogEntry } from './catalog.ts';
+import { classifyPrice } from './plausibility.ts';
 import type { Chain, FlippItem } from './flipp.ts';
 import { chainFromMerchant } from './flipp.ts';
 
@@ -314,6 +315,12 @@ function stampDeal(
 
   const salePrice = Math.min(salePriceRaw, regularPrice);
   if (regularPrice < salePrice) regularPrice = salePrice; // defensive
+
+  // Price-plausibility band: discovery is fully automated (no human confirms
+  // these before they hit deal_cache), so only a clean 'ok' price survives —
+  // both 'reject' (absurd) and 'suspicious' (unusual) are dropped rather than
+  // cached. Runs after the unit gate, against the ingredient's base price.
+  if (classifyPrice(salePrice, unit, ingredientId) !== 'ok') return null;
 
   const { fr, en } = splitName(c.name);
   const label = en !== '' ? en : entry.name;

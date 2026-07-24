@@ -293,6 +293,41 @@ describe('unit-incompatibility gate (rogue-deal protection)', () => {
     expect(cost.regularCost - cost.estimatedCost).toBe(0);
     expect(cost.saleIngredientIds).toEqual([]);
   });
+
+  // Price-plausibility HARD gate: a deal whose unit IS compatible (per-gram, so
+  // it clears the unit gate) but whose price is absurd — a stale/poisoned
+  // $4.77/g shrimp overlay (~159× the $0.03/g base) — is dropped so it can never
+  // reach the plan. The resolver falls back to the honest base price, off-sale.
+  it('(e) ignores a unit-compatible but absurdly-priced ($4.77/g) stale shrimp deal', () => {
+    const POISONED_DEAL: Deal = {
+      id: 'test-store__shrimp',
+      storeId: STORE.id,
+      ingredientId: 'shrimp',
+      label: 'Shrimp',
+      salePrice: 4.77, // per-gram → $4,770/kg: absurd
+      regularPrice: 4.99,
+      unit: 'g', // compatible with the canonical per-gram unit (clears unit gate)
+      sourceUrl: CHAIN_FLYER_URLS.superc,
+      validFrom: '2026-07-20',
+      validTo: '2026-07-30',
+    };
+    const ctx = ctxWith([POISONED_DEAL]);
+    const pricing = new PricingResolver(ctx, SHRIMP_BASE);
+
+    const p = pricing.resolve('shrimp')!;
+    expect(p.onSale).toBe(false);
+    expect(p.unit).toBe('g');
+    expect(p.unitPrice).toBe(0.03);
+    expect(p.displayUnitPrice).toBe(0.03);
+
+    const cost = computeMealCost(
+      recipe([{ ingredientId: 'shrimp', quantity: 500, unit: 'g' }]),
+      4,
+      pricing,
+    );
+    expect(cost.estimatedCost).toBe(15); // 500 × $0.03, NOT 500 × $4.77
+    expect(cost.saleIngredientIds).toEqual([]);
+  });
 });
 
 /* ----------------------------- shopping list ----------------------------- */

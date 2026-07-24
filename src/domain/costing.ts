@@ -7,6 +7,7 @@ import type {
   Store,
 } from './types';
 import { convertQty, convertUnitPrice, isMassUnit } from './units';
+import { classifyPrice } from './priceBand';
 
 /** Round to cents to avoid floating-point noise in money math. */
 export function round2(n: number): number {
@@ -126,11 +127,21 @@ export class PricingResolver {
       // ingredient (e.g. shrimp $12.99/'pack', canonical 'g') is discarded here
       // rather than relabeling grams as packs downstream. An ingredient whose
       // only deals are incompatible falls through to its honest base price.
-      const canonicalUnit = this.basePrices[deal.ingredientId]?.unit;
+      const base = this.basePrices[deal.ingredientId];
+      const canonicalUnit = base?.unit;
       if (
         canonicalUnit !== undefined &&
         !dealUnitCompatible(deal.unit, canonicalUnit)
       ) {
+        continue;
+      }
+      // Price-plausibility HARD gate (last line of defence). The server already
+      // policed prices (extract-flyer drops 'reject', discover drops anything
+      // not 'ok'), but a stale/poisoned cached deal — e.g. a per-gram $4.77
+      // shrimp price that predates this layer — could still reach the resolver.
+      // Drop only the absurd 'reject' band here; 'suspicious' is allowed through
+      // (the client is not the place to second-guess a believable price).
+      if (classifyPrice(deal.salePrice, deal.unit, base) === 'reject') {
         continue;
       }
       const existing = this.dealByIngredient.get(deal.ingredientId);

@@ -10,6 +10,7 @@
  * Jest resolves the exact file path fine.
  */
 import { CATALOG_ID_SET, getCatalogEntry } from './catalog.ts';
+import { classifyPrice } from './plausibility.ts';
 
 /** Known pricing-unit vocabulary. Anything else falls back to defaultUnit. */
 const KNOWN_UNITS = [
@@ -79,6 +80,12 @@ export interface ValidatedDeal {
   validFrom: string;
   validTo: string;
   provenance: 'extracted';
+  /**
+   * Price-plausibility flag (see plausibility.ts). Set true when the sale price
+   * landed in the 'suspicious' band — kept (so the user can confirm/correct it)
+   * but marked. Additive/optional: absent means "not flagged".
+   */
+  suspicious?: boolean;
 }
 
 export type ValidationResult =
@@ -159,6 +166,24 @@ function isPer100g(raw: unknown): boolean {
     .replace(/^per/, '') // strip leading "per"
     .replace(/^\//, ''); // strip leading "/"
   return norm === '100g';
+}
+
+/**
+ * Dedupe preference between an incoming deal and the one already kept for the
+ * same ingredient. A CLEAN (non-suspicious) deal always beats a suspicious one,
+ * regardless of price — we never let a cheaper-but-suspicious price shadow a
+ * believable one. Within the same cleanliness class, the cheaper sale wins. A
+ * suspicious deal only survives when there is no clean candidate at all.
+ */
+function preferDeal(
+  incoming: ValidatedDeal,
+  existing: ValidatedDeal | undefined,
+): boolean {
+  if (!existing) return true;
+  const incomingClean = !incoming.suspicious;
+  const existingClean = !existing.suspicious;
+  if (incomingClean !== existingClean) return incomingClean;
+  return incoming.salePrice < existing.salePrice;
 }
 
 /* -------------------------------- validate -------------------------------- */
@@ -244,6 +269,14 @@ export function validateDeals(
     const salePrice = Math.min(salePriceRaw, regularPrice);
     if (salePrice > regularPrice) regularPrice = salePrice; // defensive
 
+    // Price-plausibility band (after the unit gate, against the ingredient's
+    // known base price). A 'reject' is absurd (almost certainly a unit/parse
+    // error, e.g. shrimp $4.77/g → $4,770/kg) → drop it. A 'suspicious' price is
+    // unusual but believable → keep it, flagged, so the user confirms/corrects.
+    const band = classifyPrice(salePrice, unit, ingredientId);
+    if (band === 'reject') continue;
+    const suspicious = band === 'suspicious';
+
     const validFrom = isValidISODate(raw.validFrom) ? raw.validFrom : monday;
     const validTo = isValidISODate(raw.validTo) ? raw.validTo : sunday;
 
@@ -268,10 +301,11 @@ export function validateDeals(
       validFrom,
       validTo,
       provenance: 'extracted',
+      ...(suspicious ? { suspicious: true } : {}),
     };
 
     const existing = byIngredient.get(ingredientId);
-    if (!existing || deal.salePrice < existing.salePrice) {
+    if (preferDeal(deal, existing)) {
       byIngredient.set(ingredientId, deal);
     }
   }

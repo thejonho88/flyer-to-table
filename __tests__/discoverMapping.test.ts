@@ -288,8 +288,8 @@ describe('mapDeals', () => {
 
   it('dedupes per (store, ingredient) keeping the cheapest sale price', () => {
     const candidates = [
-      cand({ current_price: 3.49, post_price_text: '/kg' }),
-      cand({ current_price: 2.49, post_price_text: '/kg' }),
+      cand({ current_price: 6.99, original_price: 8.99, post_price_text: '/kg' }),
+      cand({ current_price: 4.99, original_price: 8.99, post_price_text: '/kg' }),
     ];
     const matches: Match[] = [
       { ingredientId: 'chicken_thigh', candidateIndex: 0 },
@@ -297,7 +297,7 @@ describe('mapDeals', () => {
     ];
     const deals = mapDeals(candidates, matches, TODAY);
     expect(deals).toHaveLength(1);
-    expect(deals[0].salePrice).toBe(2.49);
+    expect(deals[0].salePrice).toBe(4.99);
   });
 
   it('drops matches with an out-of-range candidate index or unknown ingredient', () => {
@@ -311,5 +311,41 @@ describe('mapDeals', () => {
       TODAY,
     );
     expect(deals).toHaveLength(0);
+  });
+
+  // Price-plausibility: discovery is fully automated, so only a clean 'ok' price
+  // is cached — both 'reject' (absurd) and 'suspicious' (unusual) are dropped.
+  it("drops a 'reject' price (shrimp $4.77/g → ~159× the base per-gram price)", () => {
+    const deals = mapDeals(
+      [
+        cand({
+          post_price_text: '/g',
+          current_price: 4.77,
+          original_price: 5.99,
+          name: 'Crevettes | Shrimp',
+        }),
+      ],
+      [{ ingredientId: 'shrimp', candidateIndex: 0 }],
+      TODAY,
+    );
+    expect(deals).toHaveLength(0);
+  });
+
+  it("drops a 'suspicious' price (chicken thigh $2.49/kg → ratio ~0.25)", () => {
+    const deals = mapDeals(
+      [cand({ post_price_text: '/kg', current_price: 2.49, original_price: 9.99 })],
+      [{ ingredientId: 'chicken_thigh', candidateIndex: 0 }],
+      TODAY,
+    );
+    expect(deals).toHaveLength(0);
+  });
+
+  it("keeps a clean 'ok' price ($4.99/kg chicken thigh → ratio ~0.50)", () => {
+    const [d] = mapDeals(
+      [cand({ post_price_text: '/kg', current_price: 4.99, original_price: 9.99 })],
+      [{ ingredientId: 'chicken_thigh', candidateIndex: 0 }],
+      TODAY,
+    );
+    expect(d.salePrice).toBe(4.99);
   });
 });

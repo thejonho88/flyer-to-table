@@ -3,6 +3,9 @@ import {
   type RawCandidate,
   type ValidationContext,
 } from '../supabase/functions/extract-flyer/validate';
+import { classifyPrice } from '../supabase/functions/extract-flyer/plausibility';
+import { CHAIN_CATALOG, CHAIN_DEAL_SEEDS } from '@/data/deals';
+import { BASE_PRICES } from '@/data/pricing';
 
 const CTX: ValidationContext = {
   storeId: 'metro-h2x',
@@ -31,8 +34,10 @@ describe('validateDeals', () => {
   });
 
   it('clamps salePrice to regularPrice when it exceeds it', () => {
+    // Realistic per-lb ground beef (both prices sit inside the plausible band so
+    // the clamp — not the price-plausibility gate — is what's under test).
     const [d] = ok([
-      { ingredientId: 'salmon', salePrice: 12, regularPrice: 9, unit: 'g' },
+      { ingredientId: 'ground_beef', salePrice: 12, regularPrice: 9, unit: 'lb' },
     ]);
     expect(d.salePrice).toBe(9);
     expect(d.regularPrice).toBe(9);
@@ -169,7 +174,7 @@ describe('validateDeals', () => {
 
   it('stamps id, storeId and provenance server-side and omits sourceUrl', () => {
     const [d] = ok([
-      { ingredientId: 'salmon', salePrice: 3.99, unit: 'g', labelFr: 'Saumon' },
+      { ingredientId: 'salmon', salePrice: 0.03, unit: 'g', labelFr: 'Saumon' },
     ]);
     expect(d.id).toBe('ext-metro-h2x-salmon');
     expect(d.storeId).toBe('metro-h2x');
@@ -240,5 +245,69 @@ describe('validateDeals', () => {
       CTX,
     );
     expect(result).toEqual({ ok: false, reason: 'no_deals_found' });
+  });
+});
+
+/* ---------------------- price-plausibility band gate ---------------------- */
+
+describe('validateDeals price-plausibility band', () => {
+  it("flags a 'suspicious' price with suspicious:true but keeps it", () => {
+    // rice $8.99/bag vs $5.49 regular → ratio ~1.64 (above PLAUSIBLE_MAX 1.50,
+    // inside HARD): unusual but believable → kept, flagged.
+    const [d] = ok([{ ingredientId: 'rice', salePrice: 8.99, unit: 'bag' }]);
+    expect(d.suspicious).toBe(true);
+    expect(d.salePrice).toBe(8.99);
+  });
+
+  it("does NOT flag an in-band 'ok' price", () => {
+    const [d] = ok([{ ingredientId: 'rice', salePrice: 3.99, unit: 'bag' }]);
+    expect('suspicious' in d).toBe(false);
+  });
+
+  it("hard-drops a 'reject' price: shrimp $4.77/g passes the unit gate but is absurd", () => {
+    // 'g' matches shrimp's canonical unit (so the unit gate lets it through),
+    // but $4.77/g is ~159× the $0.03/g base → reject. This is the exact incident.
+    const result = validateDeals(
+      [{ ingredientId: 'shrimp', salePrice: 4.77, unit: 'g' }],
+      CTX,
+    );
+    expect(result).toEqual({ ok: false, reason: 'no_deals_found' });
+  });
+
+  it("keeps chicken legs at $1.95/lb as a clean 'ok' deal", () => {
+    const [d] = ok([{ ingredientId: 'chicken_thigh', salePrice: 1.95, unit: 'lb' }]);
+    expect(d.salePrice).toBe(1.95);
+    expect('suspicious' in d).toBe(false);
+  });
+
+  it('dedupe prefers the cheapest CLEAN deal over a cheaper suspicious one', () => {
+    // A suspicious (very cheap) chicken price and a clean (pricier) one for the
+    // same ingredient: the clean one wins despite being more expensive.
+    const [d] = ok([
+      { ingredientId: 'chicken_thigh', salePrice: 1.0, unit: 'lb' }, // ratio ~0.22 → suspicious
+      { ingredientId: 'chicken_thigh', salePrice: 4.99, unit: 'lb' }, // ratio ~1.11 → ok
+    ]);
+    expect(d.salePrice).toBe(4.99);
+    expect('suspicious' in d).toBe(false);
+  });
+
+  it('keeps a suspicious deal only when no clean candidate exists', () => {
+    const [d] = ok([
+      { ingredientId: 'chicken_thigh', salePrice: 1.2, unit: 'lb' }, // suspicious
+      { ingredientId: 'chicken_thigh', salePrice: 1.0, unit: 'lb' }, // cheaper, still suspicious
+    ]);
+    expect(d.suspicious).toBe(true);
+    expect(d.salePrice).toBe(1.0); // among suspicious, cheapest wins
+  });
+
+  it("classifies every CHAIN_DEAL_SEEDS entry as 'ok' (clean seed data is never flagged)", () => {
+    for (const chain of CHAIN_CATALOG) {
+      for (const [ingredientId, salePrice] of CHAIN_DEAL_SEEDS[chain]) {
+        const base = BASE_PRICES[ingredientId];
+        // Seed prices are in the flyer unit (per-lb for meats, else canonical).
+        const flyerUnit = base.flyerUnit ?? base.unit;
+        expect(classifyPrice(salePrice, flyerUnit, ingredientId)).toBe('ok');
+      }
+    }
   });
 });

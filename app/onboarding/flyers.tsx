@@ -31,6 +31,8 @@ import { CHAIN_FLYER_URLS } from '@/data/flyerUrls';
 import { openExternalUrl } from '@/services/links';
 import { formatMoney } from '@/domain/money';
 import { FAILURE_COPY } from '@/domain/flyerFailureCopy';
+import { classifyPrice } from '@/domain/priceBand';
+import { BASE_PRICES } from '@/data/pricing';
 
 export default function FlyersScreen() {
   const router = useRouter();
@@ -86,6 +88,23 @@ interface EditableRow {
   included: boolean;
   /** True when the typed sale price exceeds the regular price (was clamped). */
   clamped: boolean;
+  /**
+   * True when the CURRENT (typed) sale price is in the price-plausibility
+   * 'suspicious' band. Seeded from the server flag, then recomputed live as the
+   * user edits the price so the warning clears/sets in real time.
+   */
+  suspicious: boolean;
+}
+
+/**
+ * Is this sale price (in the deal's flyer unit) in the 'suspicious' band for its
+ * ingredient? Non-finite prices are treated as not-suspicious (the clamp/apply
+ * guards handle those); the classifier abstains when there is no base price.
+ */
+function isSuspiciousPrice(price: number, deal: Deal): boolean {
+  if (!Number.isFinite(price)) return false;
+  return classifyPrice(price, deal.unit, BASE_PRICES[deal.ingredientId]) ===
+    'suspicious';
 }
 
 type Slot =
@@ -123,12 +142,18 @@ export function StoreFlyerCard({ store }: { store: Store }) {
       setSlot({
         phase: 'confirm',
         fileName: file.name,
-        rows: deals.map((deal) => ({
-          deal,
-          salePrice: String(deal.salePrice),
-          included: true,
-          clamped: false,
-        })),
+        rows: deals.map((deal) => {
+          const suspicious = deal.suspicious ?? false;
+          return {
+            deal,
+            salePrice: String(deal.salePrice),
+            // Suspicious deals default to EXCLUDED — the user must vet the price
+            // before it counts. Clean deals are included as before.
+            included: !suspicious,
+            clamped: false,
+            suspicious,
+          };
+        }),
       });
     } catch (err) {
       const reason =
@@ -150,10 +175,13 @@ export function StoreFlyerCard({ store }: { store: Store }) {
         : cur,
     );
 
-  const onEditPrice = (index: number, text: string, regularPrice: number) => {
+  const onEditPrice = (index: number, text: string, deal: Deal) => {
     const parsed = parseFloat(text);
-    const clamped = Number.isFinite(parsed) && parsed > regularPrice;
-    setRow(index, { salePrice: text, clamped });
+    const clamped = Number.isFinite(parsed) && parsed > deal.regularPrice;
+    // Re-classify against the ingredient's base price so the "unusual price"
+    // warning clears/sets live as the user corrects the number.
+    const suspicious = isSuspiciousPrice(parsed, deal);
+    setRow(index, { salePrice: text, clamped, suspicious });
   };
 
   const removeRow = (index: number) =>
@@ -172,8 +200,11 @@ export function StoreFlyerCard({ store }: { store: Store }) {
         const safe = Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
         const salePrice = Math.min(safe, r.deal.regularPrice);
         const edited = salePrice !== r.deal.salePrice;
+        // Strip the suspicious flag from whatever the user chose to commit — the
+        // user has vetted it, so it enters the plan as a normal deal.
+        const { suspicious: _suspicious, ...cleanDeal } = r.deal;
         return {
-          ...r.deal,
+          ...cleanDeal,
           salePrice,
           provenance: edited ? ('edited' as const) : ('extracted' as const),
         };
@@ -255,21 +286,39 @@ export function StoreFlyerCard({ store }: { store: Store }) {
             </Text>
           ) : (
             slot.rows.map((row, i) => (
-              <View key={row.deal.id} style={styles.dealRow}>
+              <View
+                key={row.deal.id}
+                style={[styles.dealRow, row.suspicious && styles.dealRowWarn]}
+              >
                 <View style={styles.dealMain}>
                   <Text style={styles.dealLabel}>{row.deal.label}</Text>
                   <Text style={styles.dealRegular}>
                     reg. {formatMoney(row.deal.regularPrice)}/{row.deal.unit}
                   </Text>
+                  {row.suspicious ? (
+                    <View style={styles.suspectRow}>
+                      <Icon
+                        name="alert-circle"
+                        size={13}
+                        color={colors.warning}
+                      />
+                      <Text style={styles.suspectText}>
+                        Unusual price — double-check against the flyer
+                      </Text>
+                    </View>
+                  ) : null}
                 </View>
                 <View style={styles.priceCol}>
-                  <View style={styles.priceInputWrap}>
+                  <View
+                    style={[
+                      styles.priceInputWrap,
+                      row.suspicious && styles.priceInputWrapWarn,
+                    ]}
+                  >
                     <Text style={styles.dollar}>$</Text>
                     <TextInput
                       value={row.salePrice}
-                      onChangeText={(t) =>
-                        onEditPrice(i, t, row.deal.regularPrice)
-                      }
+                      onChangeText={(t) => onEditPrice(i, t, row.deal)}
                       keyboardType="decimal-pad"
                       style={styles.priceInput}
                       accessibilityLabel={`Sale price for ${row.deal.label}`}
@@ -418,9 +467,27 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     paddingVertical: spacing.xs,
   },
+  dealRowWarn: {
+    backgroundColor: colors.warningBg,
+    borderRadius: radii.sm,
+    paddingHorizontal: spacing.xs,
+  },
   dealMain: { flex: 1 },
   dealLabel: { fontSize: fontSizes.sm, color: colors.text },
   dealRegular: { fontSize: fontSizes.xs, color: colors.textMuted },
+  suspectRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 2,
+  },
+  suspectText: {
+    flex: 1,
+    fontSize: fontSizes.xs,
+    fontWeight: fontWeights.semibold,
+    color: colors.warning,
+  },
+  priceInputWrapWarn: { borderColor: colors.warning },
   priceCol: { alignItems: 'flex-end', gap: 2 },
   priceInputWrap: {
     flexDirection: 'row',

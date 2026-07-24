@@ -2,6 +2,13 @@
 
 Newest entries first. One entry per completed task/change set.
 
+## 2026-07-23 — ① Price-plausibility validation layer (all three pipelines)
+- New shared band (data-derived from real extractions + seeds): sale-vs-base-regular ratio in canonical units; [0.30–1.50] ok, outside [0.15–3.0] rejected, between = flagged 'suspicious'. Would have caught all three of tonight's incidents by economics alone.
+- Policy per pipeline: extract-flyer (v6) keeps suspicious deals flagged for human review; discover-deals (v3) drops non-ok before the shared deal_cache; client PricingResolver hard-rejects as last line vs stale overlays. Confirm panel shows suspicious rows warning-styled, default-EXCLUDED, live re-classify on edit ("flag low-confidence rather than surface bad data" — spec P0).
+- Clean-beats-cheaper-suspicious dedupe; server plausibility.ts copies byte-identical + sync-tested against src/data/pricing.ts and src/domain/priceBand.ts.
+- Live re-verify (real Maxi PDF, v6): 15 deals, zero false rejects (chicken $1.99/lb survives), 2 EARNED flags — milk "$4.88/L" (actually a 2L carton → $2.44/L) and rice $14.99 (8 kg bag vs standard bag). Both are real package-size ambiguities routed to human review.
+- Tests: 164 → 195. Pipeline: scoper → code-builder → reviewer (pass). Next: ② one-stop vs multi-store shopping mode (multi-store stays default per Jon).
+
 ## 2026-07-23 — Direction discussion: systematic validation + single-store mode (no code)
 - Jon: backend should verify units AND pricing logic before data reaches recipes/lists; want a one-store vs multi-store shopping option; flagged that non-flyer ingredients need pricing (maybe via online-grocer data).
 - Assessment: (①) add a price-plausibility band using BASE_PRICES (sale within ~30–150% of known regular in canonical units — would have caught all three of tonight's incidents), flag borderline deals into the existing confirm/edit panel per the spec's low-confidence P0 requirement, and consolidate the thrice-copied unit gate into one shared validation module. (②) one-stop toggle is buildable NOW — base prices already fill non-flyer ingredients; richer version compares plan cost per store ("one-stop at Maxi $172 vs multi-store $158"). (③) per-store real price book from grocer catalog APIs (IGA Algolia etc., per Phase 0) is the Phase 2 upgrade that makes single-store totals exact; same ToS/bot-wall posture as flyers.
