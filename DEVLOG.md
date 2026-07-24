@@ -2,6 +2,16 @@
 
 Newest entries first. One entry per completed task/change set.
 
+## 2026-07-23 — Direction discussion: systematic validation + single-store mode (no code)
+- Jon: backend should verify units AND pricing logic before data reaches recipes/lists; want a one-store vs multi-store shopping option; flagged that non-flyer ingredients need pricing (maybe via online-grocer data).
+- Assessment: (①) add a price-plausibility band using BASE_PRICES (sale within ~30–150% of known regular in canonical units — would have caught all three of tonight's incidents), flag borderline deals into the existing confirm/edit panel per the spec's low-confidence P0 requirement, and consolidate the thrice-copied unit gate into one shared validation module. (②) one-stop toggle is buildable NOW — base prices already fill non-flyer ingredients; richer version compares plan cost per store ("one-stop at Maxi $172 vs multi-store $158"). (③) per-store real price book from grocer catalog APIs (IGA Algolia etc., per Phase 0) is the Phase 2 upgrade that makes single-store totals exact; same ToS/bot-wall posture as flyers.
+- Recommended order: ① validation → ② one-stop toggle → ③ price book (defer until pilot demand proven). Awaiting Jon's go.
+
+## Backlog additions
+- Price-plausibility validation layer (①) — trust foundation.
+- One-stop vs multi-store toggle + per-store cost comparison (② — spec P1 item).
+- Per-store price book via grocer catalog APIs (③ — Phase 2).
+
 ## 2026-07-23 — Bug fix: $6,495 shrimp ("500 pack") — client-side unit gate
 - Reported: "500 pack × $12.99 = $6,495.00" for shrimp. Price was right; unit wasn't. A pre-gate Super C extraction ('pack'-priced shrimp on the per-gram ingredient) persisted in the user's overlay, and the client's reconcileQtyToPricingUnit passes quantities through in prod on mass↔non-mass mismatch — relabeling 500 g as 500 packs.
 - Fix: the SAME unit-compatibility gate now lives client-side in PricingResolver's candidate selection (exact unit match OR both mass) — so stale caches/overlays and any future data source can't produce absurd lines. Incompatible deals are ignored; the ingredient prices at its honest base price, off-sale. reconcileQtyToPricingUnit's loud guard untouched.
