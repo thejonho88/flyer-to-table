@@ -21,8 +21,8 @@ import {
   updateDealInResult,
   type DealPatch,
 } from '@/domain/flyerMerge';
-import { discoveryAgent } from '@/services/MockDiscoveryAgent';
-import { DiscoveryError } from '@/services/MockDiscoveryAgent';
+import { discoveryAgent } from '@/services/discoveryAgent';
+import { DiscoveryError } from '@/services/discoveryError';
 import { persistence } from '@/services/LocalPersistenceAdapter';
 import { usePreferencesStore } from './preferencesStore';
 

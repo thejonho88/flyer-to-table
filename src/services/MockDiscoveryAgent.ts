@@ -9,6 +9,11 @@ import type {
 import { fsaOf } from '@/domain/postal';
 import { getSeededArea } from '@/data/deals';
 import { persistence as defaultPersistence } from './LocalPersistenceAdapter';
+import { DiscoveryError } from './discoveryError';
+
+// Re-exported for backward compatibility: existing imports of DiscoveryError
+// from this module keep working now that the class lives in its own file.
+export { DiscoveryError } from './discoveryError';
 
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -67,7 +72,9 @@ export class MockDiscoveryAgent implements DiscoveryAgent {
     if (!forceRefresh) {
       const cached = await this.persist.getDiscoveryCache(postalCode);
       if (cached && this.isFresh(cached)) {
-        const result: DiscoveryResult = { ...cached, source: 'cache' };
+        // The cache is FSA-keyed; stamp the CURRENT request's postal code so a
+        // same-area neighbour never sees the original requester's postal.
+        const result: DiscoveryResult = { ...cached, postalCode, source: 'cache' };
         emit({ type: 'complete', result });
         return result;
       }
@@ -131,16 +138,6 @@ export class MockDiscoveryAgent implements DiscoveryAgent {
     await this.persist.saveDiscoveryCache(result);
     emit({ type: 'complete', result });
     return result;
-  }
-}
-
-export class DiscoveryError extends Error {
-  constructor(
-    public reason: 'no_flyers_found' | 'error',
-    public postalCode: string,
-  ) {
-    super(`Discovery failed (${reason}) for ${postalCode}`);
-    this.name = 'DiscoveryError';
   }
 }
 

@@ -71,11 +71,13 @@ export interface Deal {
   /**
    * Where this deal came from. Optional/additive so existing (seeded) caches
    * remain valid without a version bump:
-   *  - 'seeded'    — from the built-in demo data (default when absent),
-   *  - 'extracted' — parsed from a user-uploaded flyer,
-   *  - 'edited'    — extracted then hand-corrected by the user.
+   *  - 'seeded'     — from the built-in demo data (default when absent),
+   *  - 'extracted'  — parsed from a user-uploaded flyer,
+   *  - 'edited'     — extracted then hand-corrected by the user,
+   *  - 'discovered' — pulled live by the server-side discovery agent (treated
+   *                   like 'seeded' for any "from your flyer" UI affordances).
    */
-  provenance?: 'seeded' | 'extracted' | 'edited';
+  provenance?: 'seeded' | 'extracted' | 'edited' | 'discovered';
 }
 
 export interface RecipeIngredient {
