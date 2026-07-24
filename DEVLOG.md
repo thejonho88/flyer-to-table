@@ -2,6 +2,13 @@
 
 Newest entries first. One entry per completed task/change set.
 
+## 2026-07-23 — Bug fix: $6,495 shrimp ("500 pack") — client-side unit gate
+- Reported: "500 pack × $12.99 = $6,495.00" for shrimp. Price was right; unit wasn't. A pre-gate Super C extraction ('pack'-priced shrimp on the per-gram ingredient) persisted in the user's overlay, and the client's reconcileQtyToPricingUnit passes quantities through in prod on mass↔non-mass mismatch — relabeling 500 g as 500 packs.
+- Fix: the SAME unit-compatibility gate now lives client-side in PricingResolver's candidate selection (exact unit match OR both mass) — so stale caches/overlays and any future data source can't produce absurd lines. Incompatible deals are ignored; the ingredient prices at its honest base price, off-sale. reconcileQtyToPricingUnit's loud guard untouched.
+- All three layers now share identical gate semantics: discover-deals (server), extract-flyer (server), PricingResolver (client last line of defense).
+- User remedy for stale data: re-upload the affected store's flyer (replaces the overlay) — or the client gate now neutralizes it automatically once deployed.
+- Tests: 159 → 164. Pipeline: code-builder → reviewer (pass).
+
 ## 2026-07-23 — Bug fix: $2,385 shrimp (unit-mismatch pricing in extract-flyer)
 - Reported: real Maxi upload showed "Raw shrimp skewers 300g — 500 g × $477.00/100 g = $2,385.00". Flyer price was $4.77 PER SKEWER; the validator's unknown-unit fallback stamped it onto shrimp's canonical per-GRAM unit.
 - Fix: ported discover-deals' unit-correctness gate into extract-flyer/validate.ts — keep a deal only when its unit exactly matches the ingredient's canonical unit OR both are mass units; unknown units never fall back to a mass canonical. Cost-correctness beats deal count: package-priced items mapped to mass-canonical ingredients are dropped, not guessed.

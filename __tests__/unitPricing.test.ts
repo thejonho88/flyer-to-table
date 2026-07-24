@@ -168,6 +168,133 @@ describe('resolver picks the lowest price per gram across mixed units', () => {
   });
 });
 
+describe('unit-incompatibility gate (rogue-deal protection)', () => {
+  // Canonical per-gram base prices, matching src/data/pricing.ts.
+  const SHRIMP_BASE = { shrimp: { unitPrice: 0.03, unit: 'g' as const } };
+
+  /** The exact repro: a stale 'pack'-priced shrimp deal ($12.99) that predates
+   * the server-side unit gate, sourced from a per-gram ('g') ingredient. */
+  const SHRIMP_PACK_DEAL: Deal = {
+    id: 'test-store__shrimp',
+    storeId: STORE.id,
+    ingredientId: 'shrimp',
+    label: 'Raw Shrimp Skewers',
+    salePrice: 12.99,
+    regularPrice: 14.99,
+    unit: 'pack',
+    sourceUrl: CHAIN_FLYER_URLS.superc,
+    validFrom: '2026-07-20',
+    validTo: '2026-07-30',
+  };
+
+  it('(a) ignores an incompatible pack deal and prices shrimp at its base per-gram price', () => {
+    const ctx = ctxWith([SHRIMP_PACK_DEAL]);
+    const pricing = new PricingResolver(ctx, SHRIMP_BASE);
+
+    const p = pricing.resolve('shrimp')!;
+    // Deal dropped: item is NOT on sale, priced in canonical grams at base.
+    expect(p.onSale).toBe(false);
+    expect(p.unit).toBe('g');
+    expect(p.displayUnit).toBe('g');
+    expect(p.unitPrice).toBe(0.03);
+    expect(p.regularUnitPrice).toBe(0.03);
+    // Never surfaces the rogue $12.99 pack price anywhere.
+    expect(p.displayUnitPrice).toBe(0.03);
+    expect(p.regularDisplayUnitPrice).toBe(0.03);
+
+    // A recipe needing 500 g: cost is 500 × $0.03 = $15.00, NOT the
+    // 500 × $12.99 = $6,495.00 that the mislabeled pack would have produced.
+    const cost = computeMealCost(
+      recipe([{ ingredientId: 'shrimp', quantity: 500, unit: 'g' }]),
+      4,
+      pricing,
+    );
+    expect(cost.estimatedCost).toBe(15);
+    expect(cost.regularCost).toBe(15);
+    expect(cost.saleIngredientIds).toEqual([]);
+    expect(cost.estimatedCost).toBeLessThan(6495);
+  });
+
+  it('(a) shopping list renders shrimp in grams, off-sale, with no rogue total', () => {
+    const ctx = ctxWith([SHRIMP_PACK_DEAL]);
+    ctx.recipes = [recipe([{ ingredientId: 'shrimp', quantity: 500, unit: 'g' }])];
+    const plan: MealPlan = {
+      id: 'p',
+      weekOf: '2026-07-20',
+      totals: { estimated: 0, regular: 0, savings: 0, savingsPct: 0 },
+      meals: [
+        { day: 0, recipeId: 'rtest', servings: 4, estimatedCost: 0, regularCost: 0, saleIngredientIds: [] },
+      ],
+    };
+
+    const list = buildShoppingList(plan, ctx);
+    const lines = list.storeGroups
+      .flatMap((g) => g.items)
+      .filter((i) => i.ingredientId === 'shrimp');
+    expect(lines).toHaveLength(1);
+    const line = lines[0];
+    expect(line.unit).toBe('g');
+    expect(line.onSale).toBe(false);
+    expect(line.unitPrice).toBe(0.03);
+    expect(line.quantity).toBe(500);
+    expect(line.lineTotal).toBe(round2(line.quantity * line.unitPrice));
+    expect(line.lineTotal).toBe(15);
+    expect(line.lineTotal).toBeLessThan(6495);
+  });
+
+  it('(b) still selects and converts a mass↔mass deal (lb deal, kg-priced ingredient)', () => {
+    // chicken_breast: canonical 'kg', deal advertised per 'lb' — both mass.
+    const ctx = ctxWith([CHICKEN_DEAL]);
+    const pricing = new PricingResolver(ctx, BASE);
+
+    const p = pricing.resolve('chicken_breast')!;
+    expect(p.onSale).toBe(true);
+    expect(p.unit).toBe('kg');
+    expect(p.displayUnit).toBe('lb');
+    expect(p.displayUnitPrice).toBe(8.99);
+    expect(p.unitPrice).toBeCloseTo(convertUnitPrice(8.99, 'lb', 'kg'), 6);
+  });
+
+  it('(c) still selects an exact-unit-match deal (can ↔ can)', () => {
+    const CAN_BASE = { black_beans: { unitPrice: 1.49, unit: 'can' as const } };
+    const canDeal: Deal = {
+      id: 'test-store__black_beans',
+      storeId: STORE.id,
+      ingredientId: 'black_beans',
+      label: 'Black Beans',
+      salePrice: 0.99,
+      regularPrice: 1.49,
+      unit: 'can',
+      sourceUrl: CHAIN_FLYER_URLS.superc,
+      validFrom: '2026-07-20',
+      validTo: '2026-07-30',
+    };
+    const ctx = ctxWith([canDeal]);
+    const pricing = new PricingResolver(ctx, CAN_BASE);
+
+    const p = pricing.resolve('black_beans')!;
+    expect(p.onSale).toBe(true);
+    expect(p.unit).toBe('can');
+    expect(p.displayUnit).toBe('can');
+    expect(p.unitPrice).toBe(0.99);
+  });
+
+  it('(d) an incompatible deal contributes zero savings (regular == estimated)', () => {
+    const ctx = ctxWith([SHRIMP_PACK_DEAL]);
+    const pricing = new PricingResolver(ctx, SHRIMP_BASE);
+
+    const cost = computeMealCost(
+      recipe([{ ingredientId: 'shrimp', quantity: 500, unit: 'g' }]),
+      4,
+      pricing,
+    );
+    // No sale sourced from a rogue unit → estimated equals regular, savings = 0.
+    expect(cost.estimatedCost).toBe(cost.regularCost);
+    expect(cost.regularCost - cost.estimatedCost).toBe(0);
+    expect(cost.saleIngredientIds).toEqual([]);
+  });
+});
+
 /* ----------------------------- shopping list ----------------------------- */
 
 describe('shopping list emits per-lb display lines', () => {

@@ -115,6 +115,24 @@ export class PricingResolver {
     this.dealByIngredient = new Map();
     for (const deal of ctx.deals) {
       if (selected.size > 0 && !selected.has(deal.storeId)) continue;
+      // Unit-correctness gate (cost-correctness > deal count) — mirrors the
+      // server gates in extract-flyer/validate.ts (~L234) and
+      // discover-deals/mapDeals.ts (~L288) EXACTLY. Only consider deals the
+      // resolver can price into the ingredient's canonical (base-price) unit:
+      // accept an exact unit match, OR a mass↔mass pair (the resolver converts
+      // within mass); DROP everything else. This is the single choke point that
+      // protects ALL consumers (meal cost, shopping list, swap rationale,
+      // savings math): a stale/rogue 'pack'-priced deal on a per-gram
+      // ingredient (e.g. shrimp $12.99/'pack', canonical 'g') is discarded here
+      // rather than relabeling grams as packs downstream. An ingredient whose
+      // only deals are incompatible falls through to its honest base price.
+      const canonicalUnit = this.basePrices[deal.ingredientId]?.unit;
+      if (
+        canonicalUnit !== undefined &&
+        !dealUnitCompatible(deal.unit, canonicalUnit)
+      ) {
+        continue;
+      }
       const existing = this.dealByIngredient.get(deal.ingredientId);
       if (!existing || comparableSalePrice(deal) < comparableSalePrice(existing)) {
         this.dealByIngredient.set(deal.ingredientId, deal);
@@ -183,6 +201,20 @@ function massConverter(from: string, to: string): (price: number) => number {
     return (p) => convertUnitPrice(p, from, to);
   }
   return (p) => p;
+}
+
+/**
+ * Is a deal's flyer unit compatible with an ingredient's canonical (base-price)
+ * unit, i.e. can the resolver price the deal into that canonical unit without a
+ * unit mismatch? True on an exact unit match, or when both are mass units (the
+ * resolver converts within mass). Mirrors the server-side gate semantics in
+ * extract-flyer/validate.ts and discover-deals/mapDeals.ts.
+ */
+function dealUnitCompatible(dealUnit: string, canonicalUnit: string): boolean {
+  return (
+    dealUnit === canonicalUnit ||
+    (isMassUnit(dealUnit) && isMassUnit(canonicalUnit))
+  );
 }
 
 /** Per-gram sale price for mass deals; raw sale price otherwise. */
