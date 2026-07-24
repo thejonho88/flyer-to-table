@@ -10,12 +10,17 @@ import { usePlanStore } from '@/state/planStore';
 import { useChecklistStore } from '@/state/checklistStore';
 import { useDiscoveryStore } from '@/state/discoveryStore';
 import { usePreferencesStore } from '@/state/preferencesStore';
-import { itemKey, shoppingListStats } from '@/domain/shoppingList';
+import { buildShoppingList, itemKey, shoppingListStats } from '@/domain/shoppingList';
+import { buildPlanContext } from '@/domain/context';
+import { resolveShoppingMode, type ShoppingMode } from '@/domain/shoppingMode';
+import { compareOneStopTotals } from '@/domain/storeComparison';
+import { round2 } from '@/domain/costing';
 import { formatWeekOf } from '@/domain/dates';
 import { formatQty, formatUnitPrice } from '@/domain/format';
 import { formatMoney } from '@/domain/money';
 import { shareText, shoppingListToText } from '@/services/share';
 import { StoreSpecialsModal } from '@/components/StoreSpecialsModal';
+import { ShoppingModeControl } from '@/components/ShoppingModeControl';
 import { AddStoreModal } from '@/components/AddStoreModal';
 
 export function ShoppingListScreen() {
@@ -30,21 +35,97 @@ export function ShoppingListScreen() {
   // when a store is added or the selection changes.
   const result = useDiscoveryStore((s) => s.result);
   const preferences = usePreferencesStore((s) => s.preferences);
+  const updatePrefs = usePreferencesStore((s) => s.update);
 
   const list = useMemo(() => buildList(), [buildList, plan, result, preferences]);
+
+  // One-stop comparison is computed from the MULTI-store context so the candidate
+  // universe is the full selection regardless of the current mode. Memoized on
+  // the same inputs as the list (add-store precedent: reprices reactively).
+  const comparisonData = useMemo(() => {
+    if (!plan || !result || !preferences) return null;
+    const multiCtx = buildPlanContext(result, { ...preferences, shoppingMode: 'multi' });
+    return {
+      comparison: compareOneStopTotals(plan, multiCtx),
+      multiStoreCount: buildShoppingList(plan, multiCtx).storeGroups.length,
+    };
+  }, [plan, result, preferences]);
+
+  const resolved =
+    preferences && result
+      ? resolveShoppingMode(preferences, result.stores)
+      : { mode: 'multi' as ShoppingMode };
+
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [shareMsg, setShareMsg] = useState<string | null>(null);
   const [addMsg, setAddMsg] = useState<string | null>(null);
+  const [modeMsg, setModeMsg] = useState<string | null>(null);
   const [addStoreOpen, setAddStoreOpen] = useState(false);
   const [specialsStore, setSpecialsStore] = useState<{ id: string; name: string } | null>(null);
 
+  const showModeHint = (storeName: string) => {
+    setModeMsg(
+      `Showing ${storeName} prices only — regenerate your plan to optimize meals for one store.`,
+    );
+    setTimeout(() => setModeMsg(null), 6000);
+  };
+
+  const onModeChange = async (next: ShoppingMode) => {
+    if (next === 'multi') {
+      setModeMsg(null);
+      await updatePrefs({ shoppingMode: 'multi' });
+      return;
+    }
+    // Switching to single: keep the current store if still a candidate, else
+    // default to the cheapest one-stop option.
+    const perStore = comparisonData?.comparison.perStore ?? [];
+    const current = preferences?.singleStoreId;
+    const stillValid = !!current && perStore.some((p) => p.store.id === current);
+    const chosen = stillValid ? current : perStore[0]?.store.id;
+    if (!chosen) return;
+    await updatePrefs({ shoppingMode: 'single', singleStoreId: chosen });
+    showModeHint(perStore.find((p) => p.store.id === chosen)?.store.name ?? 'this store');
+  };
+
+  const onSelectStore = async (storeId: string) => {
+    await updatePrefs({ shoppingMode: 'single', singleStoreId: storeId });
+    const perStore = comparisonData?.comparison.perStore ?? [];
+    showModeHint(perStore.find((p) => p.store.id === storeId)?.store.name ?? 'this store');
+  };
+
   const onStoreAdded = (chain: Chain) => {
     setAddStoreOpen(false);
+    // In single mode an added store does NOT auto-switch the trip — it just
+    // becomes a candidate to pick from, so the copy points at the picker.
     setAddMsg(
-      `${CHAIN_LABELS[chain]} added — prices updated. Regenerate your plan to optimize meals around it.`,
+      resolved.mode === 'single'
+        ? `${CHAIN_LABELS[chain]} added as a one-store option — pick it above to compare its prices.`
+        : `${CHAIN_LABELS[chain]} added — prices updated. Regenerate your plan to optimize meals around it.`,
     );
     setTimeout(() => setAddMsg(null), 5000);
   };
+
+  // Footer comparison line: current mode's total vs. the alternative, never
+  // overclaiming (these are the CURRENT plan priced per store, not re-optimized).
+  const comparisonLine = ((): string | null => {
+    if (!comparisonData) return null;
+    const { comparison, multiStoreCount } = comparisonData;
+    const { multiTotal, perStore } = comparison;
+    if (perStore.length < 2 || multiStoreCount < 2) return null;
+    if (resolved.mode === 'single' && resolved.storeId) {
+      const chosen = perStore.find((p) => p.store.id === resolved.storeId);
+      if (!chosen) return null;
+      const diff = round2(chosen.total - multiTotal);
+      return diff > 0
+        ? `All stores: ${formatMoney(multiTotal)} — save ${formatMoney(diff)} by visiting ${multiStoreCount} stores.`
+        : `One stop at ${chosen.store.name} costs no more than splitting the trip.`;
+    }
+    const cheapest = perStore[0];
+    const diff = round2(cheapest.total - multiTotal);
+    return diff > 0
+      ? `One store (${cheapest.store.name}): ${formatMoney(cheapest.total)} — ${formatMoney(diff)} more than visiting ${multiStoreCount} stores.`
+      : `One store (${cheapest.store.name}): ${formatMoney(cheapest.total)} — same as visiting ${multiStoreCount} stores.`;
+  })();
 
   if (!plan || !list) {
     return (
@@ -103,6 +184,33 @@ export function ShoppingListScreen() {
         </View>
       ) : null}
 
+      {resolved.invalid === 'store_missing' ? (
+        <View style={styles.warnBanner}>
+          <Icon name="alert-circle" size={18} color={colors.warning} />
+          <Text style={styles.warnBannerText}>
+            The store you picked for one-stop shopping isn't available anymore —
+            showing all your stores. Pick a store below to shop a single trip.
+          </Text>
+        </View>
+      ) : null}
+
+      {comparisonData ? (
+        <ShoppingModeControl
+          mode={resolved.mode}
+          onModeChange={onModeChange}
+          candidates={comparisonData.comparison.perStore}
+          selectedStoreId={resolved.mode === 'single' ? resolved.storeId : undefined}
+          onSelectStore={onSelectStore}
+        />
+      ) : null}
+
+      {modeMsg ? (
+        <View style={styles.addBanner}>
+          <Icon name="information-circle" size={18} color={colors.brand} />
+          <Text style={styles.addBannerText}>{modeMsg}</Text>
+        </View>
+      ) : null}
+
       {list.storeGroups.map((group) => {
         const isCollapsed = collapsed[group.store.id];
         return (
@@ -155,6 +263,12 @@ export function ShoppingListScreen() {
           <Text style={styles.footerLabel}>Estimated Weekly Total</Text>
           <Text style={styles.footerTotal}>{formatMoney(list.totals.estimated)}</Text>
           <Text style={styles.cadNote}>All prices in CAD</Text>
+          {comparisonLine ? (
+            <>
+              <Text style={styles.compareLine}>{comparisonLine}</Text>
+              <Text style={styles.cadNote}>Sale prices exact; other items estimated.</Text>
+            </>
+          ) : null}
         </View>
         <View style={styles.footerRight}>
           <View style={{ alignItems: 'flex-end' }}>
@@ -226,6 +340,23 @@ const styles = StyleSheet.create({
     padding: spacing.md,
   },
   addBannerText: { flex: 1, fontSize: fontSizes.sm, color: colors.text },
+
+  warnBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.warningBg,
+    borderRadius: radii.md,
+    padding: spacing.md,
+  },
+  warnBannerText: { flex: 1, fontSize: fontSizes.sm, color: colors.text },
+
+  compareLine: {
+    fontSize: fontSizes.sm,
+    color: colors.text,
+    fontWeight: fontWeights.semibold,
+    marginTop: spacing.xs,
+  },
 
   addStoreRow: {
     flexDirection: 'row',

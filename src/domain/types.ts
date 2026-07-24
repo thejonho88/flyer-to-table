@@ -122,6 +122,21 @@ export interface PlanPreferences {
   /** Guidance only — never a hard constraint. */
   weeklyBudgetTarget?: number;
   dinnersPerWeek: DinnersPerWeek;
+  /**
+   * Shopping mode. Absent or 'multi' (the default) shops across ALL selected
+   * stores, routing each item to its cheapest one. 'single' restricts the whole
+   * list to one store (`singleStoreId`) so the trip is a single stop. Optional/
+   * additive: old persisted prefs with neither field hydrate as 'multi' with no
+   * migration.
+   */
+  shoppingMode?: 'multi' | 'single';
+  /**
+   * Target store when `shoppingMode === 'single'`. Must be one of
+   * `selectedStoreIds` and present in the discovery result; if it is missing or
+   * stale the app falls back to 'multi' behaviour AND surfaces a visible warning
+   * (never silently). See domain/shoppingMode.ts.
+   */
+  singleStoreId?: string;
 }
 
 export interface PlannedMeal {

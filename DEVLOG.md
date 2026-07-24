@@ -2,6 +2,13 @@
 
 Newest entries first. One entry per completed task/change set.
 
+## 2026-07-23 — ② Shopping mode: "All my stores" vs "One store" (multi stays default)
+- New "Shopping trip" control on the Shopping List: segmented toggle; single mode shows per-store chips with one-stop totals for the current plan, sorted cheapest-first (the picker IS the comparison — e.g. Loblaws $236.12 … Provigo $273.95), plus a footer delta vs all-stores and "Sale prices exact; other items estimated."
+- Enforcement at ONE choke point (buildPlanContext narrows selectedStoreIds) so generation, costing, swaps, and the list all obey the mode; PricingResolver/buildShoppingList untouched. Multi-store aggregation (drive-around max savings) unchanged and default, per Jon.
+- Additive prefs (shoppingMode/singleStoreId — old persisted prefs hydrate as multi); invalid single store falls back to multi with a LOUD banner; list reprices reactively on toggle (add-store precedent), plan totals stay as-generated with a regenerate hint.
+- Verified live: one-store Loblaws collapses to a single 17-item group at $236.12 with its sale prices; chips show all 7 candidates' totals.
+- Tests: 195 → 215. Pipeline: scoper → code-builder → reviewer (pass).
+
 ## 2026-07-23 — ① Price-plausibility validation layer (all three pipelines)
 - New shared band (data-derived from real extractions + seeds): sale-vs-base-regular ratio in canonical units; [0.30–1.50] ok, outside [0.15–3.0] rejected, between = flagged 'suspicious'. Would have caught all three of tonight's incidents by economics alone.
 - Policy per pipeline: extract-flyer (v6) keeps suspicious deals flagged for human review; discover-deals (v3) drops non-ok before the shared deal_cache; client PricingResolver hard-rejects as last line vs stale overlays. Confirm panel shows suspicious rows warning-styled, default-EXCLUDED, live re-classify on edit ("flag low-confidence rather than surface bad data" — spec P0).
