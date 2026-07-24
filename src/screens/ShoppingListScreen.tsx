@@ -1,19 +1,22 @@
 import React, { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
-import type { ShoppingListItem } from '@/domain/types';
+import type { Chain, ShoppingListItem } from '@/domain/types';
 import { CHAIN_LABELS } from '@/domain/types';
 import { colors, fontSizes, fontWeights, radii, spacing } from '@/theme/tokens';
 import { Icon } from '@/ui/Icon';
 import { Button, Card, Checkbox, InfoChip, Badge } from '@/ui/primitives';
 import { usePlanStore } from '@/state/planStore';
 import { useChecklistStore } from '@/state/checklistStore';
+import { useDiscoveryStore } from '@/state/discoveryStore';
+import { usePreferencesStore } from '@/state/preferencesStore';
 import { itemKey, shoppingListStats } from '@/domain/shoppingList';
 import { formatWeekOf } from '@/domain/dates';
 import { formatQty, formatUnitPrice } from '@/domain/format';
 import { formatMoney } from '@/domain/money';
 import { shareText, shoppingListToText } from '@/services/share';
 import { StoreSpecialsModal } from '@/components/StoreSpecialsModal';
+import { AddStoreModal } from '@/components/AddStoreModal';
 
 export function ShoppingListScreen() {
   const router = useRouter();
@@ -21,11 +24,27 @@ export function ShoppingListScreen() {
   const buildList = usePlanStore((s) => s.shoppingList);
   const checked = useChecklistStore((s) => s.checked);
   const toggle = useChecklistStore((s) => s.toggle);
+  // buildList reads discovery/prefs via getState(), so those reads are invisible
+  // to React. Subscribe to the underlying state objects (not derived arrays, to
+  // avoid re-render loops) and feed them into the memo so the list recomputes
+  // when a store is added or the selection changes.
+  const result = useDiscoveryStore((s) => s.result);
+  const preferences = usePreferencesStore((s) => s.preferences);
 
-  const list = useMemo(() => buildList(), [buildList, plan]);
+  const list = useMemo(() => buildList(), [buildList, plan, result, preferences]);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [shareMsg, setShareMsg] = useState<string | null>(null);
+  const [addMsg, setAddMsg] = useState<string | null>(null);
+  const [addStoreOpen, setAddStoreOpen] = useState(false);
   const [specialsStore, setSpecialsStore] = useState<{ id: string; name: string } | null>(null);
+
+  const onStoreAdded = (chain: Chain) => {
+    setAddStoreOpen(false);
+    setAddMsg(
+      `${CHAIN_LABELS[chain]} added — prices updated. Regenerate your plan to optimize meals around it.`,
+    );
+    setTimeout(() => setAddMsg(null), 5000);
+  };
 
   if (!plan || !list) {
     return (
@@ -45,11 +64,11 @@ export function ShoppingListScreen() {
   );
 
   const onShare = async () => {
-    const result = await shareText(shoppingListToText(list));
+    const shareResult = await shareText(shoppingListToText(list));
     setShareMsg(
-      result === 'shared'
+      shareResult === 'shared'
         ? 'Shared!'
-        : result === 'copied'
+        : shareResult === 'copied'
           ? 'List copied to clipboard'
           : 'Could not share list',
     );
@@ -76,6 +95,13 @@ export function ShoppingListScreen() {
         <InfoChip icon="pricetag-outline" label={`${stats.onSaleItems} items on sale`} />
         <InfoChip icon="storefront-outline" label={`${stats.storeCount} stores`} />
       </View>
+
+      {addMsg ? (
+        <View style={styles.addBanner}>
+          <Icon name="checkmark-circle" size={18} color={colors.success} />
+          <Text style={styles.addBannerText}>{addMsg}</Text>
+        </View>
+      ) : null}
 
       {list.storeGroups.map((group) => {
         const isCollapsed = collapsed[group.store.id];
@@ -119,6 +145,11 @@ export function ShoppingListScreen() {
         );
       })}
 
+      <Pressable style={styles.addStoreRow} onPress={() => setAddStoreOpen(true)}>
+        <Icon name="add-circle-outline" size={20} color={colors.brand} />
+        <Text style={styles.addStoreText}>Add a store</Text>
+      </Pressable>
+
       <Card style={styles.footer}>
         <View>
           <Text style={styles.footerLabel}>Estimated Weekly Total</Text>
@@ -139,6 +170,12 @@ export function ShoppingListScreen() {
         storeId={specialsStore?.id ?? ''}
         storeName={specialsStore?.name ?? ''}
         onClose={() => setSpecialsStore(null)}
+      />
+
+      <AddStoreModal
+        visible={addStoreOpen}
+        onClose={() => setAddStoreOpen(false)}
+        onAdded={onStoreAdded}
       />
     </ScrollView>
   );
@@ -179,6 +216,30 @@ const styles = StyleSheet.create({
   backText: { color: colors.brand, fontWeight: fontWeights.semibold, fontSize: fontSizes.sm },
 
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+
+  addBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.successBg,
+    borderRadius: radii.md,
+    padding: spacing.md,
+  },
+  addBannerText: { flex: 1, fontSize: fontSizes.sm, color: colors.text },
+
+  addStoreRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    padding: spacing.lg,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: colors.borderStrong,
+    backgroundColor: colors.surface,
+  },
+  addStoreText: { fontSize: fontSizes.md, fontWeight: fontWeights.semibold, color: colors.brand },
 
   storeCard: { overflow: 'hidden' },
   storeHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, padding: spacing.lg },

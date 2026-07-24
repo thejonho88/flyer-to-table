@@ -571,6 +571,16 @@ export const CHAIN_CATALOG: Chain[] = [
 ];
 
 /**
+ * Chains a user can still add given the stores already present — the catalog
+ * minus every chain already represented among `stores`. Order follows
+ * CHAIN_CATALOG for a stable "add more stores" list. Pure; shared by onboarding
+ * and the shopping-list "Add a store" flow so both derive addability identically.
+ */
+export function addableChains(stores: Store[]): Chain[] {
+  return CHAIN_CATALOG.filter((c) => !stores.some((s) => s.chain === c));
+}
+
+/**
  * Per-chain sale seeds for user-added stores. Ingredient ids key into
  * BASE_PRICES (validated by buildDealsForStore) and every sale price sits a
  * realistic 15–40% below its regular price (compared in a common unit) — never

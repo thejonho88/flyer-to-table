@@ -11,6 +11,13 @@ Newest entries first. One entry per completed task/change set.
 - Tests: 67 → 96. Pipeline: scoper → code-builder → reviewer (pass; reviewer's one minor finding — client-side size pre-check — applied).
 - Deployed site now uses the real extractor (deploy.yml exports the public Supabase config at export time).
 
+## 2026-07-23 — "Add a store" from the Shopping List
+- Requested: a way to add an area store directly from the Shopping List (previously onboarding-only).
+- Dashed "Add a store" row after the last store group → modal listing addable chains (shared `addableChains` helper with onboarding) → `addStoreAndSelect` appends the store's deals AND persists it into selected stores (without which pricing ignores it — scoper caught this).
+- Fixed a real reactivity bug: the list memo never recomputed after store changes (deps didn't subscribe to discovery/prefs state). Verified live: adding Walmart re-routed Bell Peppers to its cheaper sale price instantly ($9.60 → $7.12).
+- Plan totals intentionally stay as-generated; transient banner suggests regenerating. Checklist state preserved for non-re-routed rows.
+- Tests +7 (addStoreFromList.test.ts). Pipeline: scoper → code-builder → reviewer. Reviewer flagged working-tree entanglement with the parallel discover-deals session's uncommitted edits — resolved by surgically committing only this feature's hunks (the import-swap hunk and parallel files stay uncommitted for that session to land).
+
 ## 2026-07-23 — Supabase provisioned (setup)
 - Project "Flyer 2 Table" created (ref dnkzhrladfjuyvwnhxrb); ANTHROPIC_API_KEY set as an Edge Function secret (dashboard-verified); Supabase MCP added to project config and OAuth-authenticated; official Supabase agent skills installed.
 - Everything is staged for Phase 0.5 (real Claude-backed FlyerExtractor) — build starts in the next session, where the MCP tools load.

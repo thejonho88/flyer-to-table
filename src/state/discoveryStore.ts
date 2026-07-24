@@ -72,6 +72,12 @@ interface DiscoveryState {
   ) => Promise<DiscoveryResult | null>;
   /** Append a user-added store (and its deals) to the current result. */
   addStore: (chain: Chain) => Promise<void>;
+  /**
+   * Append a user-added store AND persist it into the user's selected stores,
+   * so its deals actually feed pricing and it survives re-discovery re-merge.
+   * Idempotent end-to-end.
+   */
+  addStoreAndSelect: (chain: Chain) => Promise<void>;
   /** Replace a store's deals with those extracted from an uploaded flyer. */
   applyExtraction: (
     storeId: string,
@@ -196,6 +202,10 @@ export const useDiscoveryStore = create<DiscoveryState>((set, get) => ({
     const id = addedStoreIdFor(chain, fsa);
     // Idempotent: never double-add the same deterministic store.
     if (result.stores.some((s) => s.id === id)) return;
+    // Chain-level dedupe: a live discovery result already carries one store per
+    // chain (e.g. `metro-h4a`). Don't let a user add a seeded duplicate of a
+    // chain that's already present, which would double-count its deals.
+    if (result.stores.some((s) => s.chain === chain)) return;
 
     const { store, deals } = makeAddedStore(chain, fsa);
     const updated: DiscoveryResult = {
@@ -205,6 +215,26 @@ export const useDiscoveryStore = create<DiscoveryState>((set, get) => ({
     };
     set({ result: updated, foundStores: updated.stores });
     await persistence.saveDiscoveryCache(updated);
+  },
+
+  addStoreAndSelect: async (chain) => {
+    const before = get().result;
+    if (!before) return;
+    const id = addedStoreIdFor(chain, fsaOf(before.postalCode));
+    // addStore is idempotent and also chain-dedupes, so it may legitimately
+    // not add anything (e.g. a live-discovery store of this chain is present).
+    await get().addStore(chain);
+    // Only select a store that actually landed in the result — never persist a
+    // selection for a store id that isn't present (would be an orphan id).
+    const after = get().result;
+    if (!after || !after.stores.some((s) => s.id === id)) return;
+    // Persisting the id into selectedStoreIds is CRITICAL: PricingResolver only
+    // considers deals from selected stores, and mergeAddedStores only re-merges
+    // still-selected added stores after a re-discovery. Idempotent on the id.
+    const prefsStore = usePreferencesStore.getState();
+    const selected = prefsStore.preferences?.selectedStoreIds ?? [];
+    if (selected.includes(id)) return;
+    await prefsStore.update({ selectedStoreIds: [...selected, id] });
   },
 
   applyExtraction: async (storeId, fileName, deals) => {

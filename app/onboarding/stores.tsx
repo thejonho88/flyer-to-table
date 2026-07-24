@@ -10,7 +10,7 @@ import { OnboardingScaffold } from '@/components/OnboardingScaffold';
 import { StoreSelectCard } from '@/components/StoreSelectCard';
 import { usePreferencesStore } from '@/state/preferencesStore';
 import { useDiscoveryStore } from '@/state/discoveryStore';
-import { CHAIN_CATALOG, addedStoreIdFor } from '@/data/deals';
+import { addableChains, addedStoreIdFor } from '@/data/deals';
 import { fsaOf } from '@/domain/postal';
 
 export default function StoresScreen() {
@@ -26,10 +26,7 @@ export default function StoresScreen() {
   const [showAdd, setShowAdd] = useState(false);
 
   // Chains not already represented among the discovered/added stores.
-  const addableChains = useMemo<Chain[]>(
-    () => CHAIN_CATALOG.filter((c) => !stores.some((s) => s.chain === c)),
-    [stores],
-  );
+  const addable = useMemo<Chain[]>(() => addableChains(stores), [stores]);
 
   const onAddStore = async (chain: Chain) => {
     if (!result) return;
@@ -84,7 +81,7 @@ export default function StoresScreen() {
         ))}
       </ScrollView>
 
-      {dealsReady && addableChains.length > 0 ? (
+      {dealsReady && addable.length > 0 ? (
         <View style={styles.addSection}>
           <Pressable
             style={styles.addHeader}
@@ -96,12 +93,12 @@ export default function StoresScreen() {
               color={colors.brand}
             />
             <Text style={styles.addHeaderText}>Add more stores</Text>
-            <Text style={styles.addHeaderCount}>{addableChains.length} available</Text>
+            <Text style={styles.addHeaderCount}>{addable.length} available</Text>
           </Pressable>
 
           {showAdd ? (
             <View style={styles.addList}>
-              {addableChains.map((chain) => (
+              {addable.map((chain) => (
                 <View key={chain} style={styles.addRow}>
                   <View style={styles.addLogo}>
                     <Text style={styles.addLogoText}>
